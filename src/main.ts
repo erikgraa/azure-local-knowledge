@@ -67,7 +67,7 @@ function shell() {
       <button type="button" class="tab" data-view="version">My version</button>
     </nav>
     <div class="top-actions">
-      <button type="button" class="btn small only-narrow" id="toggle-filters">${ICONS.filter}Filters</button>
+      <button type="button" class="icon-btn only-narrow" id="toggle-filters" aria-label="Filters" title="Filters">${ICONS.filter}</button>
       <button type="button" class="icon-btn" id="theme"></button>
     </div>
   </header>
@@ -82,8 +82,11 @@ function shell() {
         <button type="button" class="icon-btn" id="clear" aria-label="Clear search" hidden>${ICONS.close}</button>
       </div>
       <div class="examples" id="examples"><span class="muted small">Try</span>${EXAMPLES.map((e) => `<button type="button" class="chip" data-search="${esc(e)}">${esc(e)}</button>`).join('')}</div>
+      <p class="hints muted small only-wide"><kbd>/</kbd> search · <kbd>↓</kbd> <kbd>↑</kbd> browse results · <kbd>Enter</kbd> open · <kbd>Esc</kbd> close</p>
     </div>
   </section>
+
+  <div id="notice"></div>
 
   <div class="layout">
     <aside class="filters" id="filters" aria-label="Filters"></aside>
@@ -120,7 +123,6 @@ function baseRows(): Row[] {
         .filter((i) => i.type !== 'release' || state.types.includes('release'))
         .map((item) => ({ item, score: 0 }));
   let rows: Row[] = hits.map((h) => ({ ...h, affects: release ? affects(h.item, release) : null }));
-  if (release && state.only && state.view === 'search') rows = rows.filter((r) => r.affects !== 'no');
   return rows;
 }
 
@@ -161,6 +163,7 @@ function releaseOptions(selected: string | null): string {
 }
 
 function renderFilters(rows: Row[]) {
+  const shownCount = rows.filter((r) => itemPasses(r.item)).length;
   const { types, areas, statuses } = facetCounts(rows);
   const typeRow = (t: ItemType) =>
     `<label class="check"><input type="checkbox" data-filter="type" value="${t}"${state.types.includes(t) ? ' checked' : ''}><span>${esc(t === 'tsg' ? 'Troubleshooting guides' : t === 'known-issue' ? 'Known issues' : 'Releases')}</span><em>${types.get(t) ?? 0}</em></label>`;
@@ -174,8 +177,7 @@ function renderFilters(rows: Row[]) {
     <div class="fgroup">
       <label class="flabel" for="release">Azure Local release</label>
       <select id="release" data-release-select>${releaseOptions(state.release)}</select>
-      ${state.release ? `<label class="check only"><input type="checkbox" data-only${state.only ? ' checked' : ''}><span>Only items that affect ${esc(state.release)}</span></label>` : ''}
-      <p class="muted small">Items are ranked and labelled for that release; nothing is hidden unless you tick the box.</p>
+      <p class="muted small">Matches stay visible; items are ranked and labelled for that release.</p>
     </div>
     <div class="fgroup"><div class="flabel">Type</div>${(['tsg', 'known-issue', 'release'] as ItemType[]).map(typeRow).join('')}</div>
     <div class="fgroup"><div class="flabel">Known-issue status</div>${STATUSES.map(statusRow).join('')}</div>
@@ -183,12 +185,13 @@ function renderFilters(rows: Row[]) {
     <div class="fgroup">
       <label class="flabel" for="sort">Sort</label>
       <select id="sort"><option value="relevance"${state.sort === 'relevance' ? ' selected' : ''}>Best match</option><option value="updated"${state.sort === 'updated' ? ' selected' : ''}>Recently updated</option></select>
-    </div>`;
+    </div>
+    <div class="filter-apply only-narrow"><button type="button" class="btn primary" data-close-filters>Show ${plural(shownCount, 'result')}</button></div>`;
 }
 
 function activeChips(): string {
   const chips: string[] = [];
-  if (state.release) chips.push(`<button type="button" class="chip removable" data-remove="release">Release ${esc(state.release)}${state.only ? ' only' : ''}${ICONS.close}</button>`);
+  if (state.release) chips.push(`<button type="button" class="chip removable" data-remove="release">Release ${esc(state.release)}${ICONS.close}</button>`);
   for (const t of state.types) chips.push(`<button type="button" class="chip removable" data-remove="type" data-value="${t}">${esc(TYPE_SHORT[t])}${ICONS.close}</button>`);
   for (const s of state.statuses) chips.push(`<button type="button" class="chip removable" data-remove="status" data-value="${s}">${esc(STATUS_LABEL[s])}${ICONS.close}</button>`);
   for (const a of state.areas) chips.push(`<button type="button" class="chip removable" data-remove="area" data-value="${esc(a)}">${esc(a)}${ICONS.close}</button>`);
@@ -236,8 +239,8 @@ function renderVersionView(rows: Row[], terms: string[]): string {
     { key: 'ki', title: `Known issues listed for ${release.id}`, hint: 'Straight from the Learn release notes for this release (including issues carried over from earlier ones).', rows: sorted.filter((r) => r.affects === 'yes' && r.item.type === 'known-issue') },
     { key: 'tsg', title: `Troubleshooting guides for ${release.id}`, hint: 'Guides whose title or body names this release.', rows: sorted.filter((r) => r.affects === 'yes' && r.item.type === 'tsg') },
     { key: 'fixed', title: 'Fixed in a newer release', hint: `Known issues resolved after ${release.id}; updating is the fix.`, rows: sorted.filter((r) => r.affects === 'fixed-later') },
-    { key: 'maybe', title: 'Guides that don’t state a version', hint: 'No release is named in these guides, so they may still apply.', rows: sorted.filter((r) => r.affects === 'maybe'), collapsed: true },
-    { key: 'other', title: `Documented for other releases`, hint: `Not listed for ${release.id}, but they match your filters. The error may still apply (older notes, other OS build) or may be long fixed.`, rows: sorted.filter((r) => r.affects === 'no'), collapsed: true },
+    { key: 'maybe', title: 'Guides without a stated release', hint: `These guides don’t name a release, so they may apply to ${release.id}.`, rows: sorted.filter((r) => r.affects === 'maybe'), collapsed: true },
+    { key: 'other', title: `Also documented, but not listed for ${release.id}`, hint: `These match your search but aren’t listed for ${release.id}: typically notes for other releases, or issues already fixed. Check the affected releases before acting.`, rows: sorted.filter((r) => r.affects === 'no'), collapsed: true },
   ].filter((g) => g.rows.length);
 
   const header = `<section class="panel banner">
@@ -279,12 +282,23 @@ function emptyState(): string {
   </section>`;
 }
 
+function filterFocusKey(): string | null {
+  const a = document.activeElement as HTMLElement | null;
+  if (!a || !a.closest('#filters')) return null;
+  if (a.id) return `#${a.id}`;
+  if (a instanceof HTMLInputElement && a.dataset.filter) return `[data-filter="${a.dataset.filter}"][value="${CSS.escape(a.value)}"]`;
+  return null;
+}
+
 function update() {
   const rows = baseRows();
   const terms = highlightTerms(state.q);
   const release = state.release ? (releaseById.get(state.release) ?? null) : null;
 
+  // Filters are re-rendered on every change; keep keyboard focus where the user was.
+  const refocus = filterFocusKey();
   renderFilters(rows);
+  if (refocus) document.querySelector<HTMLElement>(`#filters ${refocus}`)?.focus({ preventScroll: true });
   document.querySelectorAll<HTMLElement>('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === state.view));
   ($('#clear') as HTMLButtonElement).hidden = !state.q;
   const box = $('#q') as HTMLTextAreaElement;
@@ -309,7 +323,20 @@ function update() {
 function renderFooter() {
   const counts = data.stats ?? {};
   $('#footer').innerHTML = `${plural(counts.tsg ?? 0, 'guide')} · ${plural(counts['known-issue'] ?? 0, 'known issue')} · ${plural(data.releases.length, 'release train')} · index built ${esc(fmtDate(data.generatedAt))}${data.enrichment ? ` · ${plural(data.enrichment.enrichedItems, 'item')} refined by Copilot` : ''}.
-    Sources: ${data.sources.map((s) => `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.name)}</a>`).join(' · ')}. Unofficial; always confirm in the linked source.`;
+    Sources: ${data.sources.map((s) => `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.name)}</a>`).join(' · ')}. Unofficial; always confirm in the linked source. <a href="https://github.com/erikgraa/azure-local-knowledge/blob/main/NOTICE.md" target="_blank" rel="noopener noreferrer">Notice &amp; licences</a>.`;
+}
+
+const SOURCE_LABEL: Record<string, string> = { tsg: 'the Supportability guides', learn: 'the Learn known issues and release information' };
+
+/** Shown when the last update couldn't reach a source and re-used the previously published data for it. */
+function renderNotice() {
+  const el = $('#notice');
+  const list = data.degraded ?? [];
+  el.innerHTML = list.length
+    ? `<div class="notice-bar" role="status">${ICONS.warn}<p><strong>Heads up:</strong> ${list
+        .map((d) => `${esc(SOURCE_LABEL[d.source] ?? d.source)} could not be refreshed, so this site is showing the copy from ${esc(fmtDate(d.since))}`)
+        .join('; ')}. Recent additions may be missing — check the linked sources for the latest.</p></div>`
+    : '';
 }
 
 // ---------------------------------------------------------------- drawer
@@ -356,6 +383,7 @@ function openItem(id: string) {
   if (!byId.has(id)) return;
   const alreadyOpen = Boolean(state.id);
   state = { ...state, id };
+  document.body.classList.remove('filters-open');
   writeUrl(!alreadyOpen);
   if (!alreadyOpen) drawerPushed = true;
   update();
@@ -408,6 +436,34 @@ function bind() {
   document.addEventListener('keydown', (e) => {
     const target = e.target as HTMLElement;
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName);
+    const cards = () => [...document.querySelectorAll<HTMLElement>('#results .card')];
+    const focusCard = (el: HTMLElement | undefined) => {
+      if (!el) return;
+      el.focus({ preventScroll: true });
+      el.scrollIntoView({ block: 'nearest' });
+    };
+
+    // Keep Tab inside the open drawer (it is modal).
+    if (e.key === 'Tab' && state.id) {
+      const drawer = $('#drawer');
+      const focusable = [...drawer.querySelectorAll<HTMLElement>('a[href],button:not([disabled]),[tabindex]:not([tabindex="-1"])')].filter((el) => el.offsetParent !== null);
+      if (focusable.length) {
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (!drawer.contains(document.activeElement)) {
+          e.preventDefault();
+          first.focus();
+        } else if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+      return;
+    }
+
     if (e.key === '/' && !typing) {
       e.preventDefault();
       box.focus();
@@ -415,6 +471,20 @@ function bind() {
     } else if (e.key === 'Escape') {
       if (state.id) closeItem();
       else document.body.classList.remove('filters-open');
+    } else if (!state.id && target === box && e.key === 'ArrowDown' && box.scrollHeight <= box.clientHeight + 4) {
+      e.preventDefault();
+      focusCard(cards()[0]);
+    } else if (!state.id && target.classList.contains('card') && ['ArrowDown', 'ArrowUp', 'j', 'k', 'Home', 'End'].includes(e.key)) {
+      e.preventDefault();
+      const list = cards();
+      const i = list.indexOf(target);
+      if (e.key === 'Home') focusCard(list[0]);
+      else if (e.key === 'End') focusCard(list[list.length - 1]);
+      else if (e.key === 'ArrowDown' || e.key === 'j') focusCard(list[Math.min(i + 1, list.length - 1)]);
+      else if (i <= 0) {
+        box.focus();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else focusCard(list[i - 1]);
     } else if ((e.key === 'Enter' || e.key === ' ') && target.classList.contains('card')) {
       e.preventDefault();
       openItem(target.dataset.open!);
@@ -424,9 +494,7 @@ function bind() {
   document.addEventListener('change', (e) => {
     const el = e.target as HTMLInputElement | HTMLSelectElement;
     if (el.matches('[data-release-select]')) {
-      commit({ release: el.value || null, only: el.value ? state.only : false });
-    } else if (el instanceof HTMLInputElement && el.hasAttribute('data-only')) {
-      commit({ only: el.checked });
+      commit({ release: el.value || null });
     } else if (el.id === 'sort') {
       commit({ sort: el.value === 'updated' ? 'updated' : 'relevance' });
     } else if (el instanceof HTMLInputElement && el.dataset.filter) {
@@ -469,12 +537,12 @@ function bind() {
       update();
     } else if (t.dataset.remove) {
       const v = t.dataset.value;
-      if (t.dataset.remove === 'release') commit({ release: null, only: false });
+      if (t.dataset.remove === 'release') commit({ release: null });
       else if (t.dataset.remove === 'type') commit({ types: state.types.filter((x) => x !== v) });
       else if (t.dataset.remove === 'status') commit({ statuses: state.statuses.filter((x) => x !== v) });
       else if (t.dataset.remove === 'area') commit({ areas: state.areas.filter((x) => x !== v) });
     } else if (t.hasAttribute('data-reset')) {
-      commit({ types: [], statuses: [], areas: [], release: null, only: false });
+      commit({ types: [], statuses: [], areas: [], release: null });
     } else if (t.id === 'toggle-filters') {
       document.body.classList.add('filters-open');
     } else if (t.hasAttribute('data-close-filters')) {
@@ -518,6 +586,7 @@ async function boot() {
   if (state.release && !releaseById.has(state.release)) state.release = null;
   if (state.id && !byId.has(state.id)) state.id = null;
   renderFooter();
+  renderNotice();
   bind();
   update();
   if (!state.q && !state.id) $('#q').focus({ preventScroll: true });

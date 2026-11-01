@@ -23,6 +23,21 @@
       }
     },
     "stats": { "type": "object" },
+    "degraded": {
+      "type": "array",
+      "description": "Source groups served from the last published index because the live source failed or looked broken.",
+      "items": {
+        "type": "object",
+        "required": ["source", "since", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "source": { "enum": ["tsg", "learn"] },
+          "since": { "type": "string" },
+          "checkedAt": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
     "enrichment": { "type": ["object", "null"] },
     "releases": { "type": "array", "items": { "$ref": "#/definitions/release" } },
     "items": { "type": "array", "items": { "$ref": "#/definitions/item" } }

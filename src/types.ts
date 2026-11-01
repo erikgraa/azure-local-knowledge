@@ -75,6 +75,7 @@ export interface IndexData {
   sources: { name: string; url: string; ref?: string | null; count?: number }[];
   stats?: Record<string, number>;
   enrichment: { provider: string; model: string | null; enrichedItems: number; pendingItems: number; generatedAt: string } | null;
+  degraded?: { source: 'tsg' | 'learn'; since: string; checkedAt?: string; reason: string }[];
   releases: Release[];
   items: Item[];
 }
@@ -87,8 +88,6 @@ export interface State {
   q: string;
   view: ViewMode;
   release: string | null;
-  /** Hide items that don't affect the selected release (default: keep them, ranked lower). */
-  only: boolean;
   types: ItemType[];
   areas: string[];
   statuses: Exclude<ItemStatus, null>[];

@@ -11,7 +11,7 @@ export interface CardContext {
 
 const AFFECTS_LABEL: Record<Affects, string> = {
   yes: 'Affects',
-  maybe: 'Version not stated',
+  maybe: 'No release stated',
   'fixed-later': 'Fixed in a later release',
   no: '',
 };
