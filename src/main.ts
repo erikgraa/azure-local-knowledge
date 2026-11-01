@@ -58,7 +58,7 @@ function paintThemeButton() {
 function shell() {
   $('#app').innerHTML = `
   <header class="topbar">
-    <a class="brand" href="${esc(location.pathname)}" aria-label="Azure Local Compendium home">
+    <a class="brand" href="${esc(location.pathname)}" data-home aria-label="Azure Local Compendium – back to start" title="Back to start">
       <span class="logo" aria-hidden="true"><img src="${import.meta.env.BASE_URL}favicon.svg" alt="" width="36" height="36" /></span>
       <span class="brand-text"><strong>Azure Local Compendium</strong><span class="muted small">Troubleshooting guides &amp; known issues</span></span>
     </a>
@@ -511,6 +511,21 @@ function bind() {
   });
 
   document.addEventListener('click', async (e) => {
+    // Logo / title: reset to the default landing state without a page reload (plain clicks only, so
+    // open-in-new-tab and middle-click keep working).
+    const home = (e.target as HTMLElement).closest<HTMLElement>('[data-home]');
+    if (home && e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+      e.preventDefault();
+      expanded.clear();
+      drawerPushed = false;
+      document.body.classList.remove('filters-open');
+      commit({ ...defaultState() }, { push: true });
+      box.value = '';
+      autoGrow(box);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      box.focus({ preventScroll: true });
+      return;
+    }
     const t = (e.target as HTMLElement).closest<HTMLElement>('[data-search],[data-release],[data-release-clear],[data-others],[data-open],[data-close],[data-copy],[data-share],[data-more],[data-expand],[data-remove],[data-reset],[data-close-filters],#toggle-filters,#theme,#clear,#scrim');
     if (!t) return;
     if (t.tagName === 'A' || (e.target as HTMLElement).closest('a')) return;
