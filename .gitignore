@@ -6,3 +6,4 @@ public/data/index.base.json
 public/data/enrichment-report.json
 *.log
 .DS_Store
+.vite/
