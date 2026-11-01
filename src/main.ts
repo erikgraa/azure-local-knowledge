@@ -117,12 +117,14 @@ const itemPasses = (item: Item, skip?: 'type' | 'area' | 'status'): boolean => {
 function baseRows(): Row[] {
   const q = state.q.trim();
   const release = state.release ? (releaseById.get(state.release) ?? null) : null;
+  // "Fixed in a newer release" is limited to the next two release trains.
+  const laterWindow = release ? allTrainsAsc.filter((t) => trainKey(t) > trainKey(release.id)).slice(0, 2) : [];
   const hits = q
     ? searcher.search(q).map((h) => ({ item: h.item, score: h.score }))
     : data.items
-        .filter((i) => i.type !== 'release' || state.types.includes('release'))
+        .filter((i) => i.type !== 'release' || state.types.includes('release') || (state.release !== null && i.releases.includes(state.release)))
         .map((item) => ({ item, score: 0 }));
-  let rows: Row[] = hits.map((h) => ({ ...h, affects: release ? affects(h.item, release) : null }));
+  const rows: Row[] = hits.map((h) => ({ ...h, affects: release ? affects(h.item, release, laterWindow) : null }));
   return rows;
 }
 
@@ -177,7 +179,7 @@ function renderFilters(rows: Row[]) {
     <div class="fgroup">
       <label class="flabel" for="release">Azure Local release</label>
       <select id="release" data-release-select>${releaseOptions(state.release)}</select>
-      <p class="muted small">Matches stay visible; items are ranked and labelled for that release.</p>
+      <p class="muted small">Only items that apply to that release are listed.</p>
     </div>
     <div class="fgroup"><div class="flabel">Type</div>${(['tsg', 'known-issue', 'release'] as ItemType[]).map(typeRow).join('')}</div>
     <div class="fgroup"><div class="flabel">Known-issue status</div>${STATUSES.map(statusRow).join('')}</div>
@@ -203,19 +205,37 @@ function cardFor(row: Row, release: Release | null, terms: string[]): string {
   return renderCard(row.item, ctx);
 }
 
-function renderFlat(rows: Row[], terms: string[], release: Release | null): string {
+/** Rows for the selected release: items documented only for other releases are hidden unless asked for. */
+function releaseScoped(rows: Row[]): { rows: Row[]; hidden: number } {
+  if (!state.release || state.others) return { rows, hidden: 0 };
+  const kept = rows.filter((r) => r.affects !== 'no');
+  return { rows: kept, hidden: rows.filter((r) => r.affects === 'no' && itemPasses(r.item)).length };
+}
+
+/** One line under the results: how many matches are hidden because they belong to other releases. */
+function othersHint(hidden: number): string {
+  if (!state.release || !state.q.trim()) return '';
+  if (state.others) {
+    return `<p class="muted small others-hint">Including items documented for other releases. <button type="button" class="link-btn" data-others="0">Show only ${esc(state.release)}</button></p>`;
+  }
+  if (!hidden) return '';
+  return `<p class="muted small others-hint">${plural(hidden, 'more match', 'more matches')} documented only for other releases. <button type="button" class="link-btn" data-others="1">Show ${hidden === 1 ? 'it' : 'them'}</button></p>`;
+}
+
+function renderFlat(rows: Row[], terms: string[], release: Release | null, hidden = 0): string {
   const filtered = sortRows(rows.filter((r) => itemPasses(r.item)));
   const visible = filtered.slice(0, shown);
   const q = state.q.trim();
   const heading = q
-    ? `${plural(filtered.length, 'result')} for <strong>“${esc(q.length > 80 ? `${q.slice(0, 80)}…` : q)}”</strong>`
+    ? `${plural(filtered.length, 'result')} for <strong>“${esc(q.length > 80 ? `${q.slice(0, 80)}…` : q)}”</strong>${release ? ` on <strong>${esc(release.id)}</strong>` : ''}`
     : `${plural(filtered.length, 'item')} · newest first`;
   return `<div class="results-head"><p class="count-line">${heading}</p>${activeChips()}</div>
-    ${visible.length ? `<div class="cards">${visible.map((r) => cardFor(r, release, terms)).join('')}</div>` : emptyState()}
-    ${filtered.length > visible.length ? `<div class="more"><button type="button" class="btn" data-more>Show ${Math.min(PAGE, filtered.length - visible.length)} more <span class="muted">(${filtered.length - visible.length} left)</span></button></div>` : ''}`;
+    ${visible.length ? `<div class="cards">${visible.map((r) => cardFor(r, release, terms)).join('')}</div>` : emptyState(release ? hidden : 0)}
+    ${filtered.length > visible.length ? `<div class="more"><button type="button" class="btn" data-more>Show ${Math.min(PAGE, filtered.length - visible.length)} more <span class="muted">(${filtered.length - visible.length} left)</span></button></div>` : ''}
+    ${othersHint(hidden)}`;
 }
 
-function renderVersionView(rows: Row[], terms: string[]): string {
+function renderVersionView(rows: Row[], terms: string[], hidden = 0): string {
   const release = state.release ? (releaseById.get(state.release) ?? null) : null;
   if (!release) {
     const chips = data.releases
@@ -238,9 +258,9 @@ function renderVersionView(rows: Row[], terms: string[]): string {
     { key: 'release', title: `About ${release.id}`, rows: sorted.filter((r) => r.affects === 'yes' && r.item.type === 'release') },
     { key: 'ki', title: `Known issues listed for ${release.id}`, hint: 'Straight from the Learn release notes for this release (including issues carried over from earlier ones).', rows: sorted.filter((r) => r.affects === 'yes' && r.item.type === 'known-issue') },
     { key: 'tsg', title: `Troubleshooting guides for ${release.id}`, hint: 'Guides whose title or body names this release.', rows: sorted.filter((r) => r.affects === 'yes' && r.item.type === 'tsg') },
-    { key: 'fixed', title: 'Fixed in a newer release', hint: `Known issues resolved after ${release.id}; updating is the fix.`, rows: sorted.filter((r) => r.affects === 'fixed-later') },
+    { key: 'fixed', title: 'Fixed in an upcoming release', hint: `Known issues resolved in the next releases after ${release.id}; updating is the fix.`, rows: sorted.filter((r) => r.affects === 'fixed-later') },
     { key: 'maybe', title: 'Guides without a stated release', hint: `These guides don’t name a release, so they may apply to ${release.id}.`, rows: sorted.filter((r) => r.affects === 'maybe'), collapsed: true },
-    { key: 'other', title: `Also documented, but not listed for ${release.id}`, hint: `These match your search but aren’t listed for ${release.id}: typically notes for other releases, or issues already fixed. Check the affected releases before acting.`, rows: sorted.filter((r) => r.affects === 'no'), collapsed: true },
+    { key: 'other', title: `Documented for other releases`, hint: `Shown because you asked for them. These aren’t listed for ${release.id}: check the affected releases before acting.`, rows: sorted.filter((r) => r.affects === 'no'), collapsed: true },
   ].filter((g) => g.rows.length);
 
   const header = `<section class="panel banner">
@@ -248,13 +268,13 @@ function renderVersionView(rows: Row[], terms: string[]): string {
     <select id="release2" data-release-select aria-label="Release">${releaseOptions(release.id)}</select>
   </section>`;
 
-  if (!groups.length) return `${header}${emptyState()}`;
+  if (!groups.length) return `${header}${emptyState(hidden)}${othersHint(hidden)}`;
 
   // If nothing is specific to this release, don't hide the matches that do exist behind collapsed groups.
   const nothingSpecific = !groups.some((g) => !g.collapsed);
   const notice =
-    nothingSpecific && state.q.trim()
-      ? `<p class="callout info">Nothing is documented specifically for <strong>${esc(release.id)}</strong> for this search. Showing what matches in guides without a version and in other releases.</p>`
+    nothingSpecific && state.q.trim() && !state.others
+      ? `<p class="callout info">Nothing is documented specifically for <strong>${esc(release.id)}</strong> for this search. These guides don’t name a release, so they may still apply.</p>`
       : '';
 
   const body = groups
@@ -271,12 +291,14 @@ function renderVersionView(rows: Row[], terms: string[]): string {
       </section>`;
     })
     .join('');
-  return header + notice + body;
+  return header + notice + body + othersHint(hidden);
 }
 
-function emptyState(): string {
+function emptyState(otherReleaseMatches = 0): string {
+  const rel = state.release;
   return `<section class="panel empty">
-    <h2>No matches</h2>
+    <h2>No matches${rel ? ` for ${esc(rel)}` : ''}</h2>
+    ${otherReleaseMatches && rel ? `<p class="muted">${plural(otherReleaseMatches, 'item')} match${otherReleaseMatches === 1 ? 'es' : ''} but ${otherReleaseMatches === 1 ? 'is' : 'are'} only documented for other releases. <button type="button" class="link-btn" data-others="1">Show ${otherReleaseMatches === 1 ? 'it' : 'them'}</button></p>` : ''}
     <p class="muted">Try fewer words, paste just the exception or error code, or clear some filters. Identifiers like <code>SecretNotFoundException</code> or <code>0x800706BA</code> work best.</p>
     <div class="chips">${EXAMPLES.map((e) => `<button type="button" class="chip" data-search="${esc(e)}">${esc(e)}</button>`).join('')}</div>
   </section>`;
@@ -291,7 +313,8 @@ function filterFocusKey(): string | null {
 }
 
 function update() {
-  const rows = baseRows();
+  const all = baseRows();
+  const { rows, hidden } = releaseScoped(all);
   const terms = highlightTerms(state.q);
   const release = state.release ? (releaseById.get(state.release) ?? null) : null;
 
@@ -309,9 +332,9 @@ function update() {
 
   let html: string;
   if (state.view === 'version') {
-    html = renderVersionView(rows, terms);
+    html = renderVersionView(rows, terms, hidden);
   } else {
-    html = renderFlat(rows, terms, release);
+    html = renderFlat(rows, terms, release, hidden);
   }
   $('#results').innerHTML = html;
 
@@ -494,7 +517,7 @@ function bind() {
   document.addEventListener('change', (e) => {
     const el = e.target as HTMLInputElement | HTMLSelectElement;
     if (el.matches('[data-release-select]')) {
-      commit({ release: el.value || null });
+      commit({ release: el.value || null, others: false });
     } else if (el.id === 'sort') {
       commit({ sort: el.value === 'updated' ? 'updated' : 'relevance' });
     } else if (el instanceof HTMLInputElement && el.dataset.filter) {
@@ -506,7 +529,7 @@ function bind() {
   });
 
   document.addEventListener('click', async (e) => {
-    const t = (e.target as HTMLElement).closest<HTMLElement>('[data-view],[data-search],[data-release],[data-open],[data-close],[data-copy],[data-share],[data-more],[data-expand],[data-remove],[data-reset],[data-close-filters],#toggle-filters,#theme,#clear,#scrim');
+    const t = (e.target as HTMLElement).closest<HTMLElement>('[data-view],[data-search],[data-release],[data-others],[data-open],[data-close],[data-copy],[data-share],[data-more],[data-expand],[data-remove],[data-reset],[data-close-filters],#toggle-filters,#theme,#clear,#scrim');
     if (!t) return;
     if (t.tagName === 'A' || (e.target as HTMLElement).closest('a')) return;
 
@@ -518,7 +541,9 @@ function bind() {
       autoGrow(box);
       box.focus();
     } else if (t.dataset.release) {
-      commit({ release: t.dataset.release, view: 'version' });
+      commit({ release: t.dataset.release, view: 'version', others: false });
+    } else if (t.dataset.others !== undefined) {
+      commit({ others: t.dataset.others === '1' });
     } else if (t.dataset.open) {
       openItem(t.dataset.open);
     } else if (t.hasAttribute('data-close') || t.id === 'scrim') {
@@ -537,12 +562,12 @@ function bind() {
       update();
     } else if (t.dataset.remove) {
       const v = t.dataset.value;
-      if (t.dataset.remove === 'release') commit({ release: null });
+      if (t.dataset.remove === 'release') commit({ release: null, others: false });
       else if (t.dataset.remove === 'type') commit({ types: state.types.filter((x) => x !== v) });
       else if (t.dataset.remove === 'status') commit({ statuses: state.statuses.filter((x) => x !== v) });
       else if (t.dataset.remove === 'area') commit({ areas: state.areas.filter((x) => x !== v) });
     } else if (t.hasAttribute('data-reset')) {
-      commit({ types: [], statuses: [], areas: [], release: null });
+      commit({ types: [], statuses: [], areas: [], release: null, others: false });
     } else if (t.id === 'toggle-filters') {
       document.body.classList.add('filters-open');
     } else if (t.hasAttribute('data-close-filters')) {

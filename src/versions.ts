@@ -15,13 +15,14 @@ export const compareTrainsDesc = (a: string, b: string) => trainKey(b) - trainKe
  *  fixed-later  - a known issue fixed in a newer release than the user's: upgrading resolves it
  *  no           - not applicable
  */
-export function affects(item: Item, release: Release): Affects {
+export function affects(item: Item, release: Release, laterWindow?: string[]): Affects {
   if (item.releases.includes(release.id)) return 'yes';
   if (item.type === 'release') return 'no';
   const key = trainKey(release.id);
 
   if (item.type === 'known-issue') {
-    if (item.fixedIn && key < trainKey(item.fixedIn)) {
+    // Only fixes landing soon after the user's release count; older fixes say nothing about this release.
+    if (item.fixedIn && key < trainKey(item.fixedIn) && (!laterWindow || laterWindow.includes(item.fixedIn))) {
       const first = item.releases.length ? Math.min(...item.releases.map(trainKey)) : -Infinity;
       return key > first ? 'fixed-later' : 'no';
     }

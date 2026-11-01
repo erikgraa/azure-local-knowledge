@@ -37,7 +37,7 @@ Troubleshooting Azure Local means hopping between two places:
 | | |
 | --- | --- |
 | 🔎 **Paste-an-error search** | Fuzzy, typo-tolerant full-text search (MiniSearch) that understands `SecretNotFoundException`, `0x800706BA`, `exitcode: 42`, and whole pasted log lines (GUIDs, IPs and timestamps are stripped before matching). |
-| 🧭 **“My version” view** | Pick your release and get what's *listed for it*, guides *written for it*, guides that *don't state a version*, issues *fixed by upgrading*, and — so a search is never empty — matches *documented for other releases*. A release never silently hides results. |
+| 🧭 **“My version” view** | Pick your release and see only what applies to it: issues *listed for it*, guides *written for it*, guides that *don't state a release*, and issues *fixed in the next two releases* (so upgrading is the fix). Matches that are documented only for other releases are hidden, with a one-click “Show them” so a search is never a dead end. |
 | 🎛️ **Filters** | Release/version · area · type (TSG / known issue / release) · known-issue status (open / fixed / expected). |
 | 🧾 **Result cards + detail drawer** | Symptoms, error text (copy button), mitigation snippet, affected releases, related items, and deep links to the **GitHub TSG** or the **Learn known-issue section**. |
 | 🔗 **Shareable URLs** | Every search, filter, release and open item lives in the query string. |
@@ -236,7 +236,8 @@ Set `GITHUB_TOKEN` (or log in with `gh auth login`) to raise API limits and get 
 | --- | --- | --- |
 | `q` | `?q=SecretNotFoundException` | Search text |
 | `view` | `view=version` | `search` (default) or `version` (“My version”) |
-| `v` | `v=2606` | Release train (results are ranked and labelled for it; nothing is hidden) |
+| `v` | `v=2606` | Release train: only items that apply to it are listed |
+| `others` | `others=1` | With `v`: also list matches documented only for other releases |
 | `type` | `type=tsg~known-issue` | `tsg`, `known-issue`, `release` (`~`-separated) |
 | `status` | `status=open` | `open`, `fixed`, `expected` |
 | `area` | `area=Networking` | Area names (`~`-separated) |
