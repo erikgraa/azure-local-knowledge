@@ -102,7 +102,7 @@ async function main() {
   const idSet = new Set(byId.keys());
   for (const id of Object.keys(cache.entries)) if (!idSet.has(id)) delete cache.entries[id];
 
-  const pending = selectCandidates(items, cache, { force: args.force });
+  const pending = selectCandidates(items, cache, { force: args.force }).filter((i) => sourceTexts[i.id]);
   const todo = pending.slice(0, Math.max(0, maxItems));
   log(`${items.length} items: ${items.length - pending.length - items.filter((i) => i.type === 'release').length} cached, ${pending.length} need enrichment, processing ${todo.length} (provider ${providerName})`);
 

@@ -38,9 +38,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -53,19 +53,39 @@ jobs:
 
       - name: Configure Pages
         id: pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       # Enrichment results and last-modified lookups are keyed by content hash, so the cache only
       # grows with *changed* documents. restore-keys picks up the most recent run's cache.
       - name: Restore enrichment cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             .cache/enrichment-cache.json
             .cache/last-modified.json
+            .cache/last-good-index.json
           key: enrichment-${{ github.run_id }}
           restore-keys: |
             enrichment-
+
+      # Guardrail baseline: the index that is live right now. If GitHub or Learn are unreachable (or
+      # come back suspiciously small) during this run, build-index serves that source's data from it
+      # instead of publishing an empty site. A failed download is fine: the restored cache copy (if any)
+      # stays in place, and on the very first deploy there is simply no baseline.
+      - name: Fetch last published index (baseline)
+        continue-on-error: true
+        env:
+          BASE_URL: ${{ steps.pages.outputs.base_url }}
+        run: |
+          mkdir -p .cache
+          if curl -fsSL --retry 3 --max-time 60 "$BASE_URL/data/index.json?run=${GITHUB_RUN_ID}" -o .cache/baseline.tmp \
+             && node -e "const i=JSON.parse(require('fs').readFileSync('.cache/baseline.tmp','utf8')); if(!Array.isArray(i.items)||!i.items.length) process.exit(1)"; then
+            mv .cache/baseline.tmp .cache/last-good-index.json
+            echo "Baseline fetched from $BASE_URL"
+          else
+            rm -f .cache/baseline.tmp
+            echo "::notice title=No fresh baseline::Could not fetch $BASE_URL/data/index.json; using the cached copy if there is one."
+          fi
 
       - name: Build index from live sources
         run: npm run build:index
@@ -108,14 +128,21 @@ jobs:
           COPILOT_USE_GITHUB_TOKEN: ${{ vars.COPILOT_USE_GITHUB_TOKEN }}
           ENRICH_MODEL: ${{ vars.ENRICH_MODEL }}
 
+      # Last line of defence: never publish an empty, invalid or implausibly small index.
+      - name: Verify index before building
+        run: node scripts/check-index.mjs
+
       - name: Build site
         run: npm run build
         env:
           # "/<repo>/" for project sites, "/" for user/org sites and custom domains.
           VITE_BASE: ${{ steps.pages.outputs.base_path }}/
 
+      - name: Verify built site
+        run: node scripts/check-index.mjs --dist dist
+
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
@@ -130,4 +157,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

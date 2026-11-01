@@ -37,7 +37,7 @@ Troubleshooting Azure Local means hopping between two places:
 | | |
 | --- | --- |
 | 🔎 **Paste-an-error search** | Fuzzy, typo-tolerant full-text search (MiniSearch) that understands `SecretNotFoundException`, `0x800706BA`, `exitcode: 42`, and whole pasted log lines (GUIDs, IPs and timestamps are stripped before matching). |
-| 🧭 **“My version” view** | Pick your release and get what's *listed for it*, guides *written for it*, guides that *don't state a version*, issues *fixed by upgrading*, and — so a search is never empty — matches *documented for other releases*. A release never silently hides results (tick *“Only items that affect…”* to filter strictly). |
+| 🧭 **“My version” view** | Pick your release and get what's *listed for it*, guides *written for it*, guides that *don't state a version*, issues *fixed by upgrading*, and — so a search is never empty — matches *documented for other releases*. A release never silently hides results. |
 | 🎛️ **Filters** | Release/version · area · type (TSG / known issue / release) · known-issue status (open / fixed / expected). |
 | 🧾 **Result cards + detail drawer** | Symptoms, error text (copy button), mitigation snippet, affected releases, related items, and deep links to the **GitHub TSG** or the **Learn known-issue section**. |
 | 🔗 **Shareable URLs** | Every search, filter, release and open item lives in the query string. |
@@ -170,6 +170,22 @@ If neither is configured the enrichment step is **skipped** (with a notice) and 
 
 > 💡 `ENRICH_PROVIDER=github-models` is also supported by the script (GitHub Models with `GITHUB_TOKEN` + `models: read`) – not wired into the workflow by default.
 
+## 🛡️ Guardrails: never ship an empty site
+
+The deploy runs against live sources every day, so it is built to survive them being down, rate-limited or reorganised.
+
+| Situation | What happens |
+| --- | --- |
+| GitHub (TSGs) or Learn is **unreachable** / returns an error | That source's records are carried over from the **last published index** (fetched from the live site at the start of the run). Everything else still refreshes. |
+| A source "works" but comes back **suspiciously small** (e.g. the layout changed and almost nothing parses) | Judged against the last published index (default: must keep ≥ 70 % of the guides and known issues, ≥ 80 % of the releases). Below that it is treated as broken and replaced by the last good copy. |
+| **No previous index** exists (first deploy) and a source is unusable | The build **fails** with a clear error, so nothing is published. Absolute floors apply: 50 guides, 100 known issues, 15 releases. |
+| Data stays stale for **14+ days** | The run fails loudly so someone looks (a failed deploy never replaces the live site). |
+| Anything else goes wrong later (enrichment, build) | `check-index` verifies the index schema and minimum sizes before **and** after the Vite build; failure aborts the deploy and the old site stays up. |
+
+When a source is served from cache, the index carries a `degraded` entry (source, since when, why). The site then shows a **“could not be refreshed”** banner, the run emits a warning annotation, and the job summary lists what happened.
+
+Tuning (environment variables): `AZL_MIN_TSG`, `AZL_MIN_KNOWN_ISSUES`, `AZL_MIN_RELEASES`, `AZL_MIN_RATIO` (default `0.7`), `AZL_MAX_STALE_DAYS` (default `14`), `AZL_BASELINE_FILE` (default `.cache/last-good-index.json`). Fixture builds (`--fixtures`) skip these checks.
+
 ## 🚀 Run it locally
 
 Requires **Node ≥ 22.18**.
@@ -212,6 +228,7 @@ Set `GITHUB_TOKEN` (or log in with `gh auth login`) to raise API limits and get 
 | `ENRICH_BATCH_SIZE` / `ENRICH_CONCURRENCY` | `4` / `2` | prompt batching |
 | `COPILOT_BIN` | `copilot` | path to the CLI |
 | `VITE_BASE` | `./` | public base path (set by the deploy workflow) |
+| `AZL_MIN_*`, `AZL_MIN_RATIO`, `AZL_MAX_STALE_DAYS`, `AZL_BASELINE_FILE` | see above | `build:index` / `check-index` guardrails |
 
 ## 🔗 URL parameters
 
@@ -219,8 +236,7 @@ Set `GITHUB_TOKEN` (or log in with `gh auth login`) to raise API limits and get 
 | --- | --- | --- |
 | `q` | `?q=SecretNotFoundException` | Search text |
 | `view` | `view=version` | `search` (default) or `version` (“My version”) |
-| `v` | `v=2606` | Release train |
-| `only` | `only=1` | With `v`: hide items that don't affect that release (default: they stay, ranked lower and labelled) |
+| `v` | `v=2606` | Release train (results are ranked and labelled for it; nothing is hidden) |
 | `type` | `type=tsg~known-issue` | `tsg`, `known-issue`, `release` (`~`-separated) |
 | `status` | `status=open` | `open`, `fixed`, `expected` |
 | `area` | `area=Networking` | Area names (`~`-separated) |
@@ -228,19 +244,20 @@ Set `GITHUB_TOKEN` (or log in with `gh auth login`) to raise API limits and get 
 | `id` | `id=tsg-deployment-…` | Open an item's drawer |
 | `theme` | `theme=dark` | Force light/dark |
 
-⌨️ Press <kbd>/</kbd> to focus search, <kbd>Esc</kbd> to close the drawer.
+⌨️ **Keyboard:** <kbd>/</kbd> focus search · <kbd>↓</kbd> from the search box (or <kbd>↓</kbd>/<kbd>↑</kbd>/<kbd>j</kbd>/<kbd>k</kbd> on a result) to browse results · <kbd>Enter</kbd> open details · <kbd>Esc</kbd> close. Focus stays inside the details drawer while it is open.
 
 ## 🚢 CI/CD
 
 | Workflow | Triggers | What it does |
 | --- | --- | --- |
 | 🧪 [`ci.yml`](.github/workflows/ci.yml) | push · pull request · manual | `npm ci` → unit tests → typecheck → lint *(if configured)* → **index from fixtures** (no dependency on live sources) → Vite build → uploads a preview artifact |
-| 🚀 [`deploy.yml`](.github/workflows/deploy.yml) | push to `main`/`master` · **daily 04:17 UTC** · manual | tests → `configure-pages` → restore enrichment cache → **live** `build:index` → *(optional)* Copilot enrichment → `vite build` with the right `base` → `upload-pages-artifact` → `deploy-pages` |
+| 🚀 [`deploy.yml`](.github/workflows/deploy.yml) | push to `main`/`master` · **daily 04:17 UTC** · manual | tests → `configure-pages` → restore caches → fetch the **last published index** (guardrail baseline) → **live** `build:index` → *(optional)* Copilot enrichment → `check-index` → `vite build` with the right `base` → `check-index --dist` → `upload-pages-artifact` → `deploy-pages` |
 
 - 🔐 Permissions: `pages: write`, `id-token: write`, `contents: read`, plus `copilot-requests: write` for the optional `GITHUB_TOKEN` Copilot auth.
 - 🚦 `concurrency: pages` (never cancels an in-flight deployment).
 - 🗺️ **Vite `base`** comes from `actions/configure-pages` (`/<repo>/` for project sites, `/` for user sites or custom domains) via `VITE_BASE`. Locally it falls back to `./`, which works from any path.
-- ❌ If live parsing breaks (e.g. Learn changes its layout) the build fails and **the previously deployed site stays online**.
+- ❌ If a source is down the build falls back to the last published data for it; if there is nothing to fall back on, or the result fails the sanity checks, the run fails and **the previously deployed site stays online** (see [Guardrails](#️-guardrails-never-ship-an-empty-site)).
+- 🔄 Dependabot (`.github/dependabot.yml`) proposes monthly updates for actions and npm packages.
 - 🎛️ *Run workflow* lets you set `max_items` (`0` = skip Copilot) and `force_enrich`.
 
 ### 🛠️ One-time setup
@@ -263,21 +280,23 @@ Set `GITHUB_TOKEN` (or log in with `gh auth login`) to raise API limits and get 
 ├─ 🖥️ src/                 UI (vanilla TypeScript): search, state, render, styles
 ├─ ⚙️ scripts/
 │   ├─ build-index.mjs     live / fixture index builder (CLI)
+│   ├─ check-index.mjs     pre-publish sanity gate (CLI)
 │   ├─ enrich.mjs          Copilot enrichment (CLI)
 │   ├─ make-fixtures.mjs   refresh test fixtures
-│   └─ lib/                tsg · learn · markdown · versions · records · enrich · providers · sources · schema
+│   └─ lib/                tsg · learn · markdown · versions · records · guard · enrich · providers · sources · schema
 ├─ 📐 schema/              index + enrichment JSON Schemas
 ├─ 🧪 test/                node:test suites + fixtures/
 ├─ 📸 docs/                README images
-└─ 🤖 .github/workflows/   ci.yml · deploy.yml
+├─ 📜 LICENSE · NOTICE.md  MIT licence · third-party content attribution
+└─ 🤖 .github/             workflows/ (ci, deploy) · dependabot.yml
 ```
 
 ## ⚠️ Known limitations
 
-- Parsing is heuristic. TSG formats vary; where titles don't state a version the release stays empty (and shows under *“Version not stated – may apply”*). Copilot enrichment narrows this over time.
-- Learn is read from its source markdown; if the table layout changes, `build:index` fails loudly instead of publishing partial data.
+- Parsing is heuristic. TSG formats vary; where titles don't state a version the release stays empty (and shows under *“Guides without a stated release”*). Copilot enrichment narrows this over time.
+- Learn is read from its source markdown; if the table layout changes, the [guardrails](#️-guardrails-never-ship-an-empty-site) keep serving the last good data instead of publishing a partial index.
 - Known issues only list releases for which Microsoft documented them.
 
 ## 📜 Credits & licensing
 
-Troubleshooting content © Microsoft and contributors – [Azure/AzureLocal-Supportability](https://github.com/Azure/AzureLocal-Supportability) (MIT) and [MicrosoftDocs/azure-stack-docs](https://github.com/MicrosoftDocs/azure-stack-docs) (CC BY 4.0 / MIT). This project only indexes it and links back to the originals; trimmed samples live in `test/fixtures`.
+The code is [MIT licensed](LICENSE). Troubleshooting content © Microsoft and contributors – [Azure/AzureLocal-Supportability](https://github.com/Azure/AzureLocal-Supportability) (MIT) and [MicrosoftDocs/azure-stack-docs](https://github.com/MicrosoftDocs/azure-stack-docs) (CC BY 4.0 / MIT). This project only indexes it and links back to the originals; trimmed samples live in `test/fixtures`. See [NOTICE.md](NOTICE.md) for attribution details and the note that AI-generated summaries may be inaccurate.

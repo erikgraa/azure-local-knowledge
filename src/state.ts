@@ -7,7 +7,6 @@ export const defaultState = (): State => ({
   q: '',
   view: 'search',
   release: null,
-  only: false,
   types: [],
   areas: [],
   statuses: [],
@@ -24,7 +23,6 @@ export function parseState(search: string): State {
   s.q = (p.get('q') ?? '').slice(0, 2000);
   s.view = (p.get('view') === 'version' ? 'version' : 'search') as ViewMode;
   s.release = p.get('v') || null;
-  s.only = p.get('only') === '1';
   s.types = list(p.get('type')).filter((t): t is ItemType => TYPES.includes(t as ItemType));
   s.areas = list(p.get('area'));
   s.statuses = list(p.get('status')).filter((t): t is (typeof STATUSES)[number] => (STATUSES as readonly string[]).includes(t));
@@ -40,7 +38,6 @@ export function serializeState(s: State): string {
   if (s.q) p.set('q', s.q);
   if (s.view !== 'search') p.set('view', s.view);
   if (s.release) p.set('v', s.release);
-  if (s.release && s.only) p.set('only', '1');
   if (s.types.length) p.set('type', join(s.types));
   if (s.areas.length) p.set('area', join(s.areas));
   if (s.statuses.length) p.set('status', join(s.statuses));

@@ -2,6 +2,7 @@
   "name": "azure-local-knowledge",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "Searchable troubleshooting index for Azure Local: Supportability TSGs + release known issues.",
   "type": "module",
   "engines": {
