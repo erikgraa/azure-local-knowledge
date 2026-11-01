@@ -1,8 +1,7 @@
 # Third-party content and notices
 
-Azure Local Compendium is an **unofficial community project**. It is not affiliated with, sponsored by or
-endorsed by Microsoft. *Microsoft*, *Azure*, *Azure Local* and *Azure Arc* are trademarks of the Microsoft group of
-companies.
+Azure Local Compendium is an **unofficial community project**. This project is not affiliated with, endorsed by, or
+sponsored by Microsoft. Azure and Azure Local are trademarks of Microsoft Corporation.
 
 The application code in this repository is licensed under the [MIT License](LICENSE). The *content* it indexes
 belongs to its respective owners:

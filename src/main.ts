@@ -331,8 +331,18 @@ function update() {
 function renderFooter() {
   const counts = data.stats ?? {};
   const archived = data.items.filter((i) => i.lifecycle?.state === 'removed').length;
-  $('#footer').innerHTML = `${plural((counts.tsg ?? 0) - data.items.filter((i) => i.type === 'tsg' && i.lifecycle?.state === 'removed').length, 'guide')} · ${plural((counts['known-issue'] ?? 0) - data.items.filter((i) => i.type === 'known-issue' && i.lifecycle?.state === 'removed').length, 'known issue')} · ${plural(data.releases.length, 'release train')}${archived ? ` · ${plural(archived, 'archived item')} no longer on the official sites` : ''} · index built ${esc(fmtDate(data.generatedAt))}${data.enrichment ? ` · ${plural(data.enrichment.enrichedItems, 'item')} refined by Copilot` : ''}.
-    Sources: ${data.sources.map((s) => `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.name)}</a>`).join(' · ')}. Unofficial; always confirm in the linked source. <a href="https://github.com/erikgraa/azure-local-knowledge/blob/main/NOTICE.md" target="_blank" rel="noopener noreferrer">Notice &amp; licences</a>.`;
+  const live = (type: string) => data.items.filter((i) => i.type === type && i.lifecycle?.state !== 'removed').length;
+  const repo = 'https://github.com/erikgraa/azure-local-knowledge';
+  const link = (href: string, text: string) => `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+  void counts;
+  $('#footer').innerHTML = `
+    <div class="disclaimer" role="note">
+      <div class="disclaimer-title">${ICONS.heart}<strong>A community project, not an official Microsoft resource</strong></div>
+      <p>Azure Local Compendium is built and maintained by the community. It indexes public content from ${link('https://github.com/Azure/AzureLocal-Supportability', 'Azure/AzureLocal-Supportability')} and ${link('https://learn.microsoft.com/azure/azure-local/', 'Microsoft Learn')}; summaries and cross-links may be generated with AI and can be wrong. <strong>Always confirm in the linked official source</strong> before acting on a production cluster.</p>
+      <p class="trademark">This project is not affiliated with, endorsed by, or sponsored by Microsoft. Azure and Azure Local are trademarks of Microsoft Corporation.</p>
+      <p class="disclaimer-links">${link(repo, 'Source code &amp; contributions')} · ${link(`${repo}/issues`, 'Report a problem')} · ${link(`${repo}/blob/main/NOTICE.md`, 'Notice &amp; licences')}</p>
+    </div>
+    <p class="footer-stats">${plural(live('tsg'), 'guide')} · ${plural(live('known-issue'), 'known issue')} · ${plural(data.releases.length, 'release train')}${archived ? ` · ${plural(archived, 'archived item')} no longer on the official sites` : ''} · index built ${esc(fmtDate(data.generatedAt))}${data.enrichment ? ` · ${plural(data.enrichment.enrichedItems, 'item')} refined by Copilot` : ''}</p>`;
 }
 
 const SOURCE_LABEL: Record<string, string> = { tsg: 'the Supportability guides', learn: 'the Learn known issues and release information' };
