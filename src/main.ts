@@ -74,8 +74,8 @@ function shell() {
 
   <section class="hero">
     <div class="hero-inner">
-      <h1>What's going wrong with your <span class="grad">Azure Local</span>?</h1>
-      <p class="muted">Paste an error message, exception or symptom. One index over the Azure Local Supportability TSGs and the release known&nbsp;issues.</p>
+      <h1>Let's get your <span class="grad">Azure Local</span> back on track</h1>
+      <p class="muted">Paste an error message, exception or symptom and we'll look through the Supportability guides and release known&nbsp;issues for you.</p>
       <div class="searchbox">
         <span class="search-icon">${ICONS.search}</span>
         <textarea id="q" rows="1" placeholder="Paste an error, e.g. SecretNotFoundException, or describe the problem…" aria-label="Search troubleshooting guides and known issues" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
