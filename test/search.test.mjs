@@ -60,6 +60,8 @@ test('"which issues affect my version" logic', () => {
   const fixedOnly = { type: 'known-issue', releases: [], fixedIn: '2610', osVersions: [] };
   assert.equal(affects(fixedOnly, rel('2606', ['24H2'])), 'fixed-later');
   assert.equal(affects(fixedOnly, rel('2610', ['24H2'])), 'no');
+  assert.equal(affects(fixedOnly, rel('2606', ['24H2']), ['2607', '2608']), 'no', 'fixes further away than the window do not count');
+  assert.equal(affects(fixedOnly, rel('2609', ['24H2']), ['2610']), 'fixed-later');
   const tsgNoVersion = { type: 'tsg', releases: [], osVersions: [] };
   assert.equal(affects(tsgNoVersion, rel('2606', ['24H2'])), 'maybe');
   const tsg23 = { type: 'tsg', releases: [], osVersions: ['23H2'] };

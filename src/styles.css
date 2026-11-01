@@ -245,6 +245,7 @@ select {
 .codeblock pre { padding-right: 44px; max-height: 260px; overflow: auto; }
 .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: 12px; background: var(--warn-soft); color: var(--warn); font-size: 14px; }
 .callout.info { background: var(--accent-soft); color: var(--text); margin-bottom: 14px; }
+.others-hint { margin: 16px 0 0; text-align: center; }
 .callout p { margin: 0 0 4px; }
 .callout svg { margin-top: 3px; }
 .related { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
