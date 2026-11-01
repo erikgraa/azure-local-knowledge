@@ -1,0 +1,526 @@
+import './styles.css';
+import { ICONS, STATUS_LABEL, TYPE_SHORT, esc, fmtDate, plural } from './format';
+import { type CardContext, renderCard, renderDrawer } from './render';
+import { Searcher, highlightTerms } from './search';
+import { defaultState, parseState, serializeState } from './state';
+import type { Affects, IndexData, Item, ItemType, Release, State } from './types';
+import { affects, compareTrainsDesc, releaseLabel, trainKey } from './versions';
+
+const PAGE = 30;
+const GROUP_PREVIEW = 10;
+const EXAMPLES = ['SecretNotFoundException', 'Arc registration error 42', 'OperationTimeout', 'Test-Cluster DNS failure', '0x800706BA'];
+const STATUSES = ['open', 'fixed', 'expected'] as const;
+
+interface Row {
+  item: Item;
+  score: number;
+  affects: Affects | null;
+}
+
+let data: IndexData;
+let searcher: Searcher;
+let byId = new Map<string, Item>();
+let releaseById = new Map<string, Release>();
+let allTrainsAsc: string[] = [];
+let state: State = defaultState();
+let shown = PAGE;
+const expanded = new Set<string>();
+let drawerPushed = false;
+let lastFocus: HTMLElement | null = null;
+
+const $ = <T extends HTMLElement>(sel: string): T => document.querySelector<T>(sel)!;
+
+// ---------------------------------------------------------------- theme
+function initTheme() {
+  const forced = new URLSearchParams(location.search).get('theme');
+  const saved = localStorage.getItem('azl-theme');
+  const theme = forced === 'light' || forced === 'dark' ? forced : (saved ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+  document.documentElement.dataset.theme = theme;
+}
+
+function toggleTheme() {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem('azl-theme', next);
+  paintThemeButton();
+}
+
+function paintThemeButton() {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  const btn = document.getElementById('theme');
+  if (btn) {
+    btn.innerHTML = dark ? ICONS.sun : ICONS.moon;
+    btn.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+  }
+}
+
+// ---------------------------------------------------------------- shell
+function shell() {
+  $('#app').innerHTML = `
+  <header class="topbar">
+    <a class="brand" href="${esc(location.pathname)}" aria-label="AzLocalTriage home">
+      <span class="logo" aria-hidden="true"><img src="${import.meta.env.BASE_URL}favicon.svg" alt="" width="36" height="36" /></span>
+      <span class="brand-text"><strong>AzLocalTriage</strong><span class="muted small">Azure Local troubleshooting index</span></span>
+    </a>
+    <nav class="tabs" aria-label="View">
+      <button type="button" class="tab" data-view="search">Search</button>
+      <button type="button" class="tab" data-view="version">My version</button>
+    </nav>
+    <div class="top-actions">
+      <button type="button" class="btn small only-narrow" id="toggle-filters">${ICONS.filter}Filters</button>
+      <button type="button" class="icon-btn" id="theme"></button>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="hero-inner">
+      <h1>What's going wrong with your <span class="grad">Azure Local</span>?</h1>
+      <p class="muted">Paste an error message, exception or symptom. One index over the Azure Local Supportability TSGs and the release known&nbsp;issues.</p>
+      <div class="searchbox">
+        <span class="search-icon">${ICONS.search}</span>
+        <textarea id="q" rows="1" placeholder="Paste an error, e.g. SecretNotFoundException, or describe the problem…" aria-label="Search troubleshooting guides and known issues" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+        <button type="button" class="icon-btn" id="clear" aria-label="Clear search" hidden>${ICONS.close}</button>
+      </div>
+      <div class="examples" id="examples"><span class="muted small">Try</span>${EXAMPLES.map((e) => `<button type="button" class="chip" data-search="${esc(e)}">${esc(e)}</button>`).join('')}</div>
+    </div>
+  </section>
+
+  <div class="layout">
+    <aside class="filters" id="filters" aria-label="Filters"></aside>
+    <main id="results" aria-live="polite"></main>
+  </div>
+
+  <footer class="footer muted small" id="footer"></footer>
+  <div class="scrim" id="scrim" hidden></div>
+  <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden></aside>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>`;
+  paintThemeButton();
+}
+
+// ---------------------------------------------------------------- data + compute
+async function loadData(): Promise<IndexData> {
+  const res = await fetch(`${import.meta.env.BASE_URL}data/index.json`, { cache: 'no-cache' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()) as IndexData;
+}
+
+const itemPasses = (item: Item, skip?: 'type' | 'area' | 'status'): boolean => {
+  if (skip !== 'type' && state.types.length && !state.types.includes(item.type)) return false;
+  if (skip !== 'area' && state.areas.length && !(item.area && state.areas.includes(item.area))) return false;
+  if (skip !== 'status' && state.statuses.length && item.type === 'known-issue' && !(item.status && state.statuses.includes(item.status))) return false;
+  return true;
+};
+
+function baseRows(): Row[] {
+  const q = state.q.trim();
+  const release = state.release ? (releaseById.get(state.release) ?? null) : null;
+  const hits = q
+    ? searcher.search(q).map((h) => ({ item: h.item, score: h.score }))
+    : data.items
+        .filter((i) => i.type !== 'release' || state.types.includes('release'))
+        .map((item) => ({ item, score: 0 }));
+  let rows: Row[] = hits.map((h) => ({ ...h, affects: release ? affects(h.item, release) : null }));
+  if (release && state.only && state.view === 'search') rows = rows.filter((r) => r.affects !== 'no');
+  return rows;
+}
+
+function sortRows(rows: Row[]): Row[] {
+  const hasQuery = Boolean(state.q.trim());
+  const updated = (r: Row) => r.item.lastUpdated ?? '';
+  return [...rows].sort((a, b) => {
+    if (state.sort === 'updated' || !hasQuery) {
+      const d = updated(b).localeCompare(updated(a));
+      if (d) return d;
+      return b.score - a.score;
+    }
+    const bump = (r: Row) => (r.affects === 'yes' ? 1.12 : r.affects === 'no' ? 0.85 : 1);
+    return b.score * bump(b) - a.score * bump(a);
+  });
+}
+
+function facetCounts(rows: Row[]) {
+  const types = new Map<string, number>();
+  const areas = new Map<string, number>();
+  const statuses = new Map<string, number>();
+  for (const r of rows) {
+    if (itemPasses(r.item, 'type')) types.set(r.item.type, (types.get(r.item.type) ?? 0) + 1);
+    if (itemPasses(r.item, 'area') && r.item.area) areas.set(r.item.area, (areas.get(r.item.area) ?? 0) + 1);
+    if (r.item.type === 'known-issue' && itemPasses(r.item, 'status') && r.item.status) statuses.set(r.item.status, (statuses.get(r.item.status) ?? 0) + 1);
+  }
+  return { types, areas, statuses };
+}
+
+// ---------------------------------------------------------------- rendering
+function releaseOptions(selected: string | null): string {
+  const supported = data.releases.filter((r) => r.supported);
+  const older = data.releases.filter((r) => !r.supported);
+  const opt = (r: Release) => `<option value="${esc(r.id)}"${selected === r.id ? ' selected' : ''}>${esc(releaseLabel(r))}${r.osVersions.length ? ` (${esc(r.osVersions.join('/'))})` : ''}</option>`;
+  return `<option value="">Any release</option>
+    <optgroup label="Supported">${supported.map(opt).join('')}</optgroup>
+    <optgroup label="Older / unsupported">${older.map(opt).join('')}</optgroup>`;
+}
+
+function renderFilters(rows: Row[]) {
+  const { types, areas, statuses } = facetCounts(rows);
+  const typeRow = (t: ItemType) =>
+    `<label class="check"><input type="checkbox" data-filter="type" value="${t}"${state.types.includes(t) ? ' checked' : ''}><span>${esc(t === 'tsg' ? 'Troubleshooting guides' : t === 'known-issue' ? 'Known issues' : 'Releases')}</span><em>${types.get(t) ?? 0}</em></label>`;
+  const statusRow = (s: (typeof STATUSES)[number]) =>
+    `<label class="check"><input type="checkbox" data-filter="status" value="${s}"${state.statuses.includes(s) ? ' checked' : ''}><span>${esc(STATUS_LABEL[s])}</span><em>${statuses.get(s) ?? 0}</em></label>`;
+  const areaList = [...new Set([...areas.keys(), ...state.areas])].sort((a, b) => (areas.get(b) ?? 0) - (areas.get(a) ?? 0) || a.localeCompare(b));
+  const active = state.types.length + state.areas.length + state.statuses.length + (state.release ? 1 : 0);
+
+  $('#filters').innerHTML = `
+    <div class="filter-head"><h2>Filters</h2>${active ? `<button type="button" class="link-btn" data-reset>Reset (${active})</button>` : ''}<button type="button" class="icon-btn only-narrow" data-close-filters aria-label="Close filters">${ICONS.close}</button></div>
+    <div class="fgroup">
+      <label class="flabel" for="release">Azure Local release</label>
+      <select id="release" data-release-select>${releaseOptions(state.release)}</select>
+      ${state.release ? `<label class="check only"><input type="checkbox" data-only${state.only ? ' checked' : ''}><span>Only items that affect ${esc(state.release)}</span></label>` : ''}
+      <p class="muted small">Items are ranked and labelled for that release; nothing is hidden unless you tick the box.</p>
+    </div>
+    <div class="fgroup"><div class="flabel">Type</div>${(['tsg', 'known-issue', 'release'] as ItemType[]).map(typeRow).join('')}</div>
+    <div class="fgroup"><div class="flabel">Known-issue status</div>${STATUSES.map(statusRow).join('')}</div>
+    <div class="fgroup"><div class="flabel">Area</div><div class="area-list">${areaList.map((a) => `<label class="check"><input type="checkbox" data-filter="area" value="${esc(a)}"${state.areas.includes(a) ? ' checked' : ''}><span>${esc(a)}</span><em>${areas.get(a) ?? 0}</em></label>`).join('') || '<p class="muted small">No areas</p>'}</div></div>
+    <div class="fgroup">
+      <label class="flabel" for="sort">Sort</label>
+      <select id="sort"><option value="relevance"${state.sort === 'relevance' ? ' selected' : ''}>Best match</option><option value="updated"${state.sort === 'updated' ? ' selected' : ''}>Recently updated</option></select>
+    </div>`;
+}
+
+function activeChips(): string {
+  const chips: string[] = [];
+  if (state.release) chips.push(`<button type="button" class="chip removable" data-remove="release">Release ${esc(state.release)}${state.only ? ' only' : ''}${ICONS.close}</button>`);
+  for (const t of state.types) chips.push(`<button type="button" class="chip removable" data-remove="type" data-value="${t}">${esc(TYPE_SHORT[t])}${ICONS.close}</button>`);
+  for (const s of state.statuses) chips.push(`<button type="button" class="chip removable" data-remove="status" data-value="${s}">${esc(STATUS_LABEL[s])}${ICONS.close}</button>`);
+  for (const a of state.areas) chips.push(`<button type="button" class="chip removable" data-remove="area" data-value="${esc(a)}">${esc(a)}${ICONS.close}</button>`);
+  return chips.length ? `<div class="chips active-chips">${chips.join('')}</div>` : '';
+}
+
+function cardFor(row: Row, release: Release | null, terms: string[]): string {
+  const ctx: CardContext = { terms, affects: row.affects, release, allTrainsAsc };
+  return renderCard(row.item, ctx);
+}
+
+function renderFlat(rows: Row[], terms: string[], release: Release | null): string {
+  const filtered = sortRows(rows.filter((r) => itemPasses(r.item)));
+  const visible = filtered.slice(0, shown);
+  const q = state.q.trim();
+  const heading = q
+    ? `${plural(filtered.length, 'result')} for <strong>“${esc(q.length > 80 ? `${q.slice(0, 80)}…` : q)}”</strong>`
+    : `${plural(filtered.length, 'item')} · newest first`;
+  return `<div class="results-head"><p class="count-line">${heading}</p>${activeChips()}</div>
+    ${visible.length ? `<div class="cards">${visible.map((r) => cardFor(r, release, terms)).join('')}</div>` : emptyState()}
+    ${filtered.length > visible.length ? `<div class="more"><button type="button" class="btn" data-more>Show ${Math.min(PAGE, filtered.length - visible.length)} more <span class="muted">(${filtered.length - visible.length} left)</span></button></div>` : ''}`;
+}
+
+function renderVersionView(rows: Row[], terms: string[]): string {
+  const release = state.release ? (releaseById.get(state.release) ?? null) : null;
+  if (!release) {
+    const chips = data.releases
+      .filter((r) => r.supported)
+      .map((r) => `<button type="button" class="chip big" data-release="${esc(r.id)}">${esc(releaseLabel(r))}</button>`)
+      .join('');
+    // The picker never replaces search: matches for the current query are always listed underneath.
+    return `<section class="panel pick">
+      <h2>Which issues affect my version?</h2>
+      <p class="muted">Pick the Azure Local release your cluster runs (Azure portal → your cluster → Overview, or <code>Get-SolutionUpdate</code>; the train is the 4-digit number in <code>12.<b>2610</b>.1004.41</code>). You'll get the known issues listed for that release, the guides written for it, and guides that don't state a version.</p>
+      <div class="chips">${chips}</div>
+      <label class="flabel" for="release2">Or choose any release</label>
+      <select id="release2" data-release-select>${releaseOptions(null)}</select>
+    </section>${renderFlat(rows, terms, null)}`;
+  }
+
+  const filtered = rows.filter((r) => itemPasses(r.item));
+  const sorted = sortRows(filtered);
+  const groups: { key: string; title: string; hint?: string; rows: Row[]; collapsed?: boolean }[] = [
+    { key: 'release', title: `About ${release.id}`, rows: sorted.filter((r) => r.affects === 'yes' && r.item.type === 'release') },
+    { key: 'ki', title: `Known issues listed for ${release.id}`, hint: 'Straight from the Learn release notes for this release (including issues carried over from earlier ones).', rows: sorted.filter((r) => r.affects === 'yes' && r.item.type === 'known-issue') },
+    { key: 'tsg', title: `Troubleshooting guides for ${release.id}`, hint: 'Guides whose title or body names this release.', rows: sorted.filter((r) => r.affects === 'yes' && r.item.type === 'tsg') },
+    { key: 'fixed', title: 'Fixed in a newer release', hint: `Known issues resolved after ${release.id}; updating is the fix.`, rows: sorted.filter((r) => r.affects === 'fixed-later') },
+    { key: 'maybe', title: 'Guides that don’t state a version', hint: 'No release is named in these guides, so they may still apply.', rows: sorted.filter((r) => r.affects === 'maybe'), collapsed: true },
+    { key: 'other', title: `Documented for other releases`, hint: `Not listed for ${release.id}, but they match your filters. The error may still apply (older notes, other OS build) or may be long fixed.`, rows: sorted.filter((r) => r.affects === 'no'), collapsed: true },
+  ].filter((g) => g.rows.length);
+
+  const header = `<section class="panel banner">
+    <div><h2>${esc(releaseLabel(release))}</h2><p class="muted small">${[release.osVersions.join(' / '), release.solutionVersions[0]?.version ? `solution ${release.solutionVersions[0].version}` : '', release.availabilityDate ? `available ${fmtDate(release.availabilityDate)}` : '', release.supported ? 'supported' : 'outside the supported window'].filter(Boolean).map(esc).join(' · ')}</p></div>
+    <select id="release2" data-release-select aria-label="Release">${releaseOptions(release.id)}</select>
+  </section>`;
+
+  if (!groups.length) return `${header}${emptyState()}`;
+
+  // If nothing is specific to this release, don't hide the matches that do exist behind collapsed groups.
+  const nothingSpecific = !groups.some((g) => !g.collapsed);
+  const notice =
+    nothingSpecific && state.q.trim()
+      ? `<p class="callout info">Nothing is documented specifically for <strong>${esc(release.id)}</strong> for this search. Showing what matches in guides without a version and in other releases.</p>`
+      : '';
+
+  const body = groups
+    .map((g) => {
+      const open = expanded.has(g.key);
+      const visible = open ? g.rows : g.rows.slice(0, GROUP_PREVIEW);
+      return `<section class="group">
+        <details${g.collapsed && !nothingSpecific ? '' : ' open'}>
+          <summary><h3>${esc(g.title)} <span class="count">${g.rows.length}</span></h3></summary>
+          ${g.hint ? `<p class="muted small group-hint">${esc(g.hint)}</p>` : ''}
+          <div class="cards">${visible.map((r) => cardFor(r, release, terms)).join('')}</div>
+          ${g.rows.length > visible.length ? `<button type="button" class="btn" data-expand="${g.key}">Show all ${g.rows.length}</button>` : ''}
+        </details>
+      </section>`;
+    })
+    .join('');
+  return header + notice + body;
+}
+
+function emptyState(): string {
+  return `<section class="panel empty">
+    <h2>No matches</h2>
+    <p class="muted">Try fewer words, paste just the exception or error code, or clear some filters. Identifiers like <code>SecretNotFoundException</code> or <code>0x800706BA</code> work best.</p>
+    <div class="chips">${EXAMPLES.map((e) => `<button type="button" class="chip" data-search="${esc(e)}">${esc(e)}</button>`).join('')}</div>
+  </section>`;
+}
+
+function update() {
+  const rows = baseRows();
+  const terms = highlightTerms(state.q);
+  const release = state.release ? (releaseById.get(state.release) ?? null) : null;
+
+  renderFilters(rows);
+  document.querySelectorAll<HTMLElement>('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === state.view));
+  ($('#clear') as HTMLButtonElement).hidden = !state.q;
+  const box = $('#q') as HTMLTextAreaElement;
+  if (box.value !== state.q) {
+    box.value = state.q;
+    autoGrow(box);
+  }
+
+  let html: string;
+  if (state.view === 'version') {
+    html = renderVersionView(rows, terms);
+  } else {
+    html = renderFlat(rows, terms, release);
+  }
+  $('#results').innerHTML = html;
+
+  const drawer = state.id ? byId.get(state.id) : null;
+  if (drawer) showDrawer(drawer);
+  else hideDrawer(false);
+}
+
+function renderFooter() {
+  const counts = data.stats ?? {};
+  $('#footer').innerHTML = `${plural(counts.tsg ?? 0, 'guide')} · ${plural(counts['known-issue'] ?? 0, 'known issue')} · ${plural(data.releases.length, 'release train')} · index built ${esc(fmtDate(data.generatedAt))}${data.enrichment ? ` · ${plural(data.enrichment.enrichedItems, 'item')} refined by Copilot` : ''}.
+    Sources: ${data.sources.map((s) => `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.name)}</a>`).join(' · ')}. Unofficial; always confirm in the linked source.`;
+}
+
+// ---------------------------------------------------------------- drawer
+function showDrawer(item: Item) {
+  const drawer = $('#drawer');
+  const wasHidden = drawer.hidden;
+  drawer.innerHTML = renderDrawer(item, data, byId, allTrainsAsc);
+  drawer.hidden = false;
+  $('#scrim').hidden = false;
+  document.body.classList.add('drawer-open');
+  document.title = `${item.title} · AzLocalTriage`;
+  if (wasHidden) {
+    lastFocus = document.activeElement as HTMLElement | null;
+    drawer.scrollTop = 0;
+    drawer.querySelector<HTMLElement>('[data-close]')?.focus();
+  }
+}
+
+function hideDrawer(restoreFocus = true) {
+  const drawer = $('#drawer');
+  if (drawer.hidden) return;
+  drawer.hidden = true;
+  $('#scrim').hidden = true;
+  document.body.classList.remove('drawer-open');
+  document.title = 'AzLocalTriage — Azure Local troubleshooting index';
+  if (restoreFocus) lastFocus?.focus?.();
+}
+
+// ---------------------------------------------------------------- state / url
+function writeUrl(push: boolean) {
+  const url = `${location.pathname}${serializeState(state)}`;
+  if (push) history.pushState(null, '', url);
+  else history.replaceState(null, '', url);
+}
+
+function commit(patch: Partial<State>, opts: { push?: boolean; resetPaging?: boolean } = {}) {
+  state = { ...state, ...patch };
+  if (opts.resetPaging !== false) shown = PAGE;
+  writeUrl(Boolean(opts.push));
+  update();
+}
+
+function openItem(id: string) {
+  if (!byId.has(id)) return;
+  const alreadyOpen = Boolean(state.id);
+  state = { ...state, id };
+  writeUrl(!alreadyOpen);
+  if (!alreadyOpen) drawerPushed = true;
+  update();
+}
+
+function closeItem() {
+  if (!state.id) return;
+  if (drawerPushed) {
+    drawerPushed = false;
+    history.back();
+    return;
+  }
+  state = { ...state, id: null };
+  writeUrl(false);
+  update();
+}
+
+function toggle<T>(list: T[], value: T, on: boolean): T[] {
+  const set = new Set(list);
+  if (on) set.add(value);
+  else set.delete(value);
+  return [...set];
+}
+
+function toast(message: string) {
+  const el = $('#toast');
+  el.textContent = message;
+  el.classList.add('show');
+  window.setTimeout(() => el.classList.remove('show'), 1800);
+}
+
+function autoGrow(el: HTMLTextAreaElement) {
+  el.style.height = 'auto';
+  el.style.height = `${Math.min(el.scrollHeight, 168)}px`;
+}
+
+// ---------------------------------------------------------------- events
+function bind() {
+  const box = $('#q') as HTMLTextAreaElement;
+  let timer: number | undefined;
+  box.addEventListener('input', () => {
+    autoGrow(box);
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => commit({ q: box.value.replace(/\s+/g, ' ').trim().slice(0, 2000) }), 140);
+  });
+  box.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) e.preventDefault();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    const target = e.target as HTMLElement;
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName);
+    if (e.key === '/' && !typing) {
+      e.preventDefault();
+      box.focus();
+      box.select();
+    } else if (e.key === 'Escape') {
+      if (state.id) closeItem();
+      else document.body.classList.remove('filters-open');
+    } else if ((e.key === 'Enter' || e.key === ' ') && target.classList.contains('card')) {
+      e.preventDefault();
+      openItem(target.dataset.open!);
+    }
+  });
+
+  document.addEventListener('change', (e) => {
+    const el = e.target as HTMLInputElement | HTMLSelectElement;
+    if (el.matches('[data-release-select]')) {
+      commit({ release: el.value || null, only: el.value ? state.only : false });
+    } else if (el instanceof HTMLInputElement && el.hasAttribute('data-only')) {
+      commit({ only: el.checked });
+    } else if (el.id === 'sort') {
+      commit({ sort: el.value === 'updated' ? 'updated' : 'relevance' });
+    } else if (el instanceof HTMLInputElement && el.dataset.filter) {
+      const f = el.dataset.filter;
+      if (f === 'type') commit({ types: toggle(state.types, el.value as ItemType, el.checked) });
+      else if (f === 'status') commit({ statuses: toggle(state.statuses, el.value as (typeof STATUSES)[number], el.checked) });
+      else if (f === 'area') commit({ areas: toggle(state.areas, el.value, el.checked) });
+    }
+  });
+
+  document.addEventListener('click', async (e) => {
+    const t = (e.target as HTMLElement).closest<HTMLElement>('[data-view],[data-search],[data-release],[data-open],[data-close],[data-copy],[data-share],[data-more],[data-expand],[data-remove],[data-reset],[data-close-filters],#toggle-filters,#theme,#clear,#scrim');
+    if (!t) return;
+    if (t.tagName === 'A' || (e.target as HTMLElement).closest('a')) return;
+
+    if (t.dataset.view) {
+      commit({ view: t.dataset.view as State['view'], id: null });
+    } else if (t.dataset.search !== undefined) {
+      commit({ q: t.dataset.search, view: state.view });
+      box.value = t.dataset.search;
+      autoGrow(box);
+      box.focus();
+    } else if (t.dataset.release) {
+      commit({ release: t.dataset.release, view: 'version' });
+    } else if (t.dataset.open) {
+      openItem(t.dataset.open);
+    } else if (t.hasAttribute('data-close') || t.id === 'scrim') {
+      closeItem();
+    } else if (t.dataset.copy !== undefined) {
+      await navigator.clipboard?.writeText(t.dataset.copy).catch(() => {});
+      toast('Copied to clipboard');
+    } else if (t.hasAttribute('data-share')) {
+      await navigator.clipboard?.writeText(location.href).catch(() => {});
+      toast('Link copied');
+    } else if (t.hasAttribute('data-more')) {
+      shown += PAGE;
+      update();
+    } else if (t.dataset.expand) {
+      expanded.add(t.dataset.expand);
+      update();
+    } else if (t.dataset.remove) {
+      const v = t.dataset.value;
+      if (t.dataset.remove === 'release') commit({ release: null, only: false });
+      else if (t.dataset.remove === 'type') commit({ types: state.types.filter((x) => x !== v) });
+      else if (t.dataset.remove === 'status') commit({ statuses: state.statuses.filter((x) => x !== v) });
+      else if (t.dataset.remove === 'area') commit({ areas: state.areas.filter((x) => x !== v) });
+    } else if (t.hasAttribute('data-reset')) {
+      commit({ types: [], statuses: [], areas: [], release: null, only: false });
+    } else if (t.id === 'toggle-filters') {
+      document.body.classList.add('filters-open');
+    } else if (t.hasAttribute('data-close-filters')) {
+      document.body.classList.remove('filters-open');
+    } else if (t.id === 'theme') {
+      toggleTheme();
+    } else if (t.id === 'clear') {
+      commit({ q: '' });
+      box.value = '';
+      autoGrow(box);
+      box.focus();
+    }
+  });
+
+  window.addEventListener('popstate', () => {
+    state = parseState(location.search);
+    drawerPushed = false;
+    shown = PAGE;
+    update();
+  });
+}
+
+// ---------------------------------------------------------------- boot
+async function boot() {
+  initTheme();
+  shell();
+  $('#results').innerHTML = '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>';
+  try {
+    data = await loadData();
+  } catch (err) {
+    $('#results').innerHTML = `<section class="panel empty"><h2>Couldn't load the index</h2><p class="muted">${esc((err as Error).message)}. If you're running locally, generate it first with <code>npm run build:index</code>.</p></section>`;
+    return;
+  }
+  byId = new Map(data.items.map((i) => [i.id, i]));
+  releaseById = new Map(data.releases.map((r) => [r.id, r]));
+  allTrainsAsc = data.releases.map((r) => r.id).sort((a, b) => trainKey(a) - trainKey(b));
+  data.releases.sort((a, b) => compareTrainsDesc(a.id, b.id));
+  searcher = new Searcher(data.items);
+
+  state = parseState(location.search);
+  if (state.release && !releaseById.has(state.release)) state.release = null;
+  if (state.id && !byId.has(state.id)) state.id = null;
+  renderFooter();
+  bind();
+  update();
+  if (!state.q && !state.id) $('#q').focus({ preventScroll: true });
+}
+
+void boot();

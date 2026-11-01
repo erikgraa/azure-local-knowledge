@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="AzLocalTriage">
+  <title>AzLocalTriage</title>
+  <defs>
+    <linearGradient id="bg" x1="6" y1="4" x2="58" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2f9bff"/>
+      <stop offset="1" stop-color="#6a5cff"/>
+    </linearGradient>
+    <radialGradient id="shine" cx="0.25" cy="0.12" r="0.8">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.38"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#bg)"/>
+  <rect width="64" height="64" rx="15" fill="url(#shine)"/>
+  <!-- magnifier = search -->
+  <circle cx="28" cy="28" r="15.5" fill="#fff" fill-opacity="0.14" stroke="#fff" stroke-width="5"/>
+  <path d="M39.5 39.5 52 52" stroke="#fff" stroke-width="6.5" stroke-linecap="round"/>
+  <!-- pulse = triage -->
+  <path d="M16.5 29h6l3.2-8 5.2 16 3.4-8h5.2" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

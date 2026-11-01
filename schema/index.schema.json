@@ -1,0 +1,133 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://azlocal-triage/schema/index.schema.json",
+  "title": "AzLocalTriage index",
+  "type": "object",
+  "required": ["schemaVersion", "generatedAt", "sources", "releases", "items"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "generatedAt": { "type": "string" },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "url"],
+        "additionalProperties": true,
+        "properties": {
+          "name": { "type": "string" },
+          "url": { "type": "string" },
+          "ref": { "type": ["string", "null"] },
+          "count": { "type": "integer" }
+        }
+      }
+    },
+    "stats": { "type": "object" },
+    "enrichment": { "type": ["object", "null"] },
+    "releases": { "type": "array", "items": { "$ref": "#/definitions/release" } },
+    "items": { "type": "array", "items": { "$ref": "#/definitions/item" } }
+  },
+  "definitions": {
+    "stringArray": { "type": "array", "items": { "type": "string" } },
+    "release": {
+      "type": "object",
+      "required": ["id", "supported", "osVersions", "solutionVersions"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string", "pattern": "^\\d{4}(\\.\\d+)?$" },
+        "label": { "type": "string" },
+        "supported": { "type": "boolean" },
+        "isLatest": { "type": "boolean" },
+        "availabilityDate": { "type": ["string", "null"] },
+        "osVersions": { "$ref": "#/definitions/stringArray" },
+        "osBuilds": { "$ref": "#/definitions/stringArray" },
+        "knownIssuesLink": { "type": ["string", "null"] },
+        "solutionVersions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["version"],
+            "properties": {
+              "version": { "type": "string" },
+              "osVersion": { "type": ["string", "null"] },
+              "osBuild": { "type": ["string", "null"] },
+              "availabilityDate": { "type": ["string", "null"] },
+              "supersededBy": { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
+    },
+    "link": {
+      "type": "object",
+      "required": ["label", "url"],
+      "additionalProperties": false,
+      "properties": { "label": { "type": "string" }, "url": { "type": "string" } }
+    },
+    "related": {
+      "type": "object",
+      "required": ["id", "relation"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "relation": { "enum": ["same-issue", "related", "supersedes", "workaround-for", "documented-in", "known-issue"] },
+        "reason": { "type": ["string", "null"], "maxLength": 240 }
+      }
+    },
+    "flag": {
+      "type": "object",
+      "required": ["kind", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string" },
+        "message": { "type": "string", "maxLength": 400 }
+      }
+    },
+    "item": {
+      "type": "object",
+      "required": ["id", "type", "title", "area", "releases", "url"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "enum": ["tsg", "known-issue", "release"] },
+        "title": { "type": "string", "minLength": 1 },
+        "area": { "type": ["string", "null"] },
+        "subarea": { "type": ["string", "null"] },
+        "status": { "enum": ["open", "fixed", "expected", null] },
+        "releases": { "$ref": "#/definitions/stringArray" },
+        "osVersions": { "$ref": "#/definitions/stringArray" },
+        "solutionVersions": { "$ref": "#/definitions/stringArray" },
+        "versionText": { "type": ["string", "null"] },
+        "introducedIn": { "type": ["string", "null"] },
+        "fixedIn": { "type": ["string", "null"] },
+        "symptoms": { "type": ["string", "null"] },
+        "symptomSummary": { "type": ["string", "null"], "maxLength": 300 },
+        "errorStrings": { "$ref": "#/definitions/stringArray" },
+        "errorCodes": { "$ref": "#/definitions/stringArray" },
+        "aliases": { "$ref": "#/definitions/stringArray" },
+        "mitigationSummary": { "type": ["string", "null"] },
+        "mitigation": { "type": ["string", "null"] },
+        "url": { "type": "string" },
+        "urls": { "type": "array", "items": { "$ref": "#/definitions/link" } },
+        "lastUpdated": { "type": ["string", "null"] },
+        "sourceHash": { "type": ["string", "null"] },
+        "source": { "type": ["string", "null"] },
+        "related": { "type": "array", "items": { "$ref": "#/definitions/related" } },
+        "flags": { "type": "array", "items": { "$ref": "#/definitions/flag" } },
+        "enrichment": {
+          "type": ["object", "null"],
+          "properties": {
+            "provider": { "type": "string" },
+            "model": { "type": ["string", "null"] },
+            "enrichedAt": { "type": "string" },
+            "promptVersion": { "type": "integer" },
+            "confidence": { "enum": ["high", "medium", "low"] },
+            "applied": { "$ref": "#/definitions/stringArray" }
+          }
+        },
+        "excerpt": { "type": ["string", "null"] },
+        "release": { "type": ["object", "null"] }
+      }
+    }
+  }
+}

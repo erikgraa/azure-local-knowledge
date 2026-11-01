@@ -1,0 +1,14 @@
+{
+  "name": "AzLocalTriage",
+  "short_name": "AzLocalTriage",
+  "description": "Azure Local troubleshooting guides and known issues in one searchable index.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0a0f1f",
+  "theme_color": "#2f6bff",
+  "icons": [
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

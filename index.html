@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AzLocalTriage — Azure Local troubleshooting index</title>
+    <meta name="description" content="Search Azure Local troubleshooting guides and release known issues in one place. Paste an error, pick your release, get the fix." />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="theme-color" content="#2f6bff" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <script>
+      // Set the theme before first paint to avoid a flash.
+      (function () {
+        try {
+          var q = new URLSearchParams(location.search).get('theme');
+          var saved = localStorage.getItem('azl-theme');
+          var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          document.documentElement.dataset.theme = q === 'light' || q === 'dark' ? q : saved || (dark ? 'dark' : 'light');
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <noscript>AzLocalTriage needs JavaScript to search the index.</noscript>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,133 @@
+name: Build & deploy to GitHub Pages
+
+# Rebuilds the index from the live sources every day, optionally enriches it with Copilot,
+# and publishes the site. Requires Settings -> Pages -> Source: "GitHub Actions".
+on:
+  push:
+    branches: [main, master]
+  schedule:
+    - cron: '17 4 * * *' # daily, 04:17 UTC
+  workflow_dispatch:
+    inputs:
+      max_items:
+        description: 'Max items to enrich with Copilot in this run (0 = skip enrichment)'
+        required: false
+        default: '60'
+      force_enrich:
+        description: 'Ignore the enrichment cache and re-process everything (up to max_items)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  copilot-requests: write # lets the built-in GITHUB_TOKEN call Copilot (org repos, see README); unused with a PAT
+
+# One deployment at a time; never cancel a deployment that is already publishing.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  ENRICH_MAX_ITEMS: ${{ inputs.max_items || '60' }}
+
+jobs:
+  build:
+    name: Build site
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      # Enrichment results and last-modified lookups are keyed by content hash, so the cache only
+      # grows with *changed* documents. restore-keys picks up the most recent run's cache.
+      - name: Restore enrichment cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/enrichment-cache.json
+            .cache/last-modified.json
+          key: enrichment-${{ github.run_id }}
+          restore-keys: |
+            enrichment-
+
+      - name: Build index from live sources
+        run: npm run build:index
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Auth options (first match wins):
+      #   1. secret COPILOT_GITHUB_TOKEN  - fine-grained PAT with "Copilot Requests" (works everywhere)
+      #   2. variable COPILOT_USE_GITHUB_TOKEN=true - built-in GITHUB_TOKEN + `copilot-requests: write`
+      #      (organization-owned repos whose org allows Copilot CLI billed to the organization)
+      - name: Check Copilot enrichment credentials
+        id: copilot
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          USE_GITHUB_TOKEN: ${{ vars.COPILOT_USE_GITHUB_TOKEN }}
+        run: |
+          if [ "${ENRICH_MAX_ITEMS}" = "0" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Copilot enrichment skipped::max_items is 0."
+          elif [ -n "$COPILOT_GITHUB_TOKEN" ] || [ "$USE_GITHUB_TOKEN" = "true" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Copilot enrichment skipped::Add a COPILOT_GITHUB_TOKEN secret (or set the COPILOT_USE_GITHUB_TOKEN variable) to enable it - see README. Publishing parser-only data."
+          fi
+
+      - name: Install Copilot CLI
+        if: steps.copilot.outputs.enabled == 'true'
+        run: npm install -g @github/copilot
+
+      # Never fails the job: on any error the deterministic index.json is deployed as-is.
+      - name: Enrich index with Copilot
+        if: steps.copilot.outputs.enabled == 'true'
+        run: |
+          if [ -z "$COPILOT_GITHUB_TOKEN" ]; then unset COPILOT_GITHUB_TOKEN; fi
+          npm run enrich -- ${{ inputs.force_enrich && '--force' || '' }}
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          COPILOT_USE_GITHUB_TOKEN: ${{ vars.COPILOT_USE_GITHUB_TOKEN }}
+          ENRICH_MODEL: ${{ vars.ENRICH_MODEL }}
+
+      - name: Build site
+        run: npm run build
+        env:
+          # "/<repo>/" for project sites, "/" for user/org sites and custom domains.
+          VITE_BASE: ${{ steps.pages.outputs.base_path }}/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

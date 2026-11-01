@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.cache/
+public/data/index.json
+public/data/index.base.json
+public/data/enrichment-report.json
+*.log
+.DS_Store
