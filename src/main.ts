@@ -70,7 +70,7 @@ function shell() {
 
   <section class="hero">
     <div class="hero-inner">
-      <h1>Let's get your <span class="grad">Azure Local</span> back on track</h1>
+      <h1>Your <span class="grad">Azure Local</span> troubleshooting companion</h1>
       <p class="muted">Paste an error message, exception or symptom and we'll look through the Supportability guides and release known&nbsp;issues for you.</p>
       <div class="searchbox">
         <span class="search-icon">${ICONS.search}</span>
