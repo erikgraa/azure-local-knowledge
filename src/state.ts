@@ -1,11 +1,10 @@
-import type { ItemType, State, ViewMode } from './types';
+import type { ItemType, State } from './types';
 
 const TYPES: ItemType[] = ['tsg', 'known-issue', 'release'];
 const STATUSES = ['open', 'fixed', 'expected'] as const;
 
 export const defaultState = (): State => ({
   q: '',
-  view: 'search',
   release: null,
   others: false,
   types: [],
@@ -17,12 +16,11 @@ export const defaultState = (): State => ({
 
 const list = (v: string | null): string[] => (v ? v.split('~').map(decodeURIComponent).filter(Boolean) : []);
 
-/** Everything shareable lives in the query string: ?q=...&v=2506&view=version&type=tsg&area=...&id=... */
+/** Everything shareable lives in the query string: ?q=...&v=2506&type=tsg&area=...&id=... (old `view=` links still work: `v` is what matters). */
 export function parseState(search: string): State {
   const p = new URLSearchParams(search);
   const s = defaultState();
   s.q = (p.get('q') ?? '').slice(0, 2000);
-  s.view = (p.get('view') === 'version' ? 'version' : 'search') as ViewMode;
   s.release = p.get('v') || null;
   s.others = p.get('others') === '1';
   s.types = list(p.get('type')).filter((t): t is ItemType => TYPES.includes(t as ItemType));
@@ -38,7 +36,6 @@ const join = (xs: string[]) => xs.map(encodeURIComponent).join('~');
 export function serializeState(s: State): string {
   const p = new URLSearchParams();
   if (s.q) p.set('q', s.q);
-  if (s.view !== 'search') p.set('view', s.view);
   if (s.release) p.set('v', s.release);
   if (s.release && s.others) p.set('others', '1');
   if (s.types.length) p.set('type', join(s.types));

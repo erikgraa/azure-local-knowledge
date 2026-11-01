@@ -86,7 +86,6 @@ export type ViewMode = 'search' | 'version';
 
 export interface State {
   q: string;
-  view: ViewMode;
   release: string | null;
   /** Also list matches that are documented only for other releases (default: hidden once a release is selected). */
   others: boolean;
