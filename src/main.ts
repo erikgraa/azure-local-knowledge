@@ -295,7 +295,7 @@ function renderReleaseRow() {
   $('#release-row').innerHTML = `
     <label class="muted small" for="release">${chosen ? 'Showing results for' : 'Which release are you on?'}</label>
     <select id="release" data-release-select>${releaseOptions(state.release)}</select>
-    ${chosen ? `<button type="button" class="chip removable" data-release-clear>${esc(chosen.id)}${ICONS.close}</button>` : quick.map((r) => `<button type="button" class="chip" data-release="${esc(r.id)}">${esc(r.id)}</button>`).join('')}`;
+    ${chosen ? `<button type="button" class="chip pick active" data-release-clear title="Clear release">${esc(chosen.id)}${ICONS.close}</button>` : quick.map((r) => `<button type="button" class="chip pick" data-release="${esc(r.id)}" title="Show what applies to ${esc(r.id)}">${esc(r.id)}</button>`).join('')}`;
 }
 
 function update() {
