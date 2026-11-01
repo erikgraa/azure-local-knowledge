@@ -1,10 +1,11 @@
 import { assessSources, degradedEntries, symmetrizeLinks } from './guard.mjs';
+import { isRemoved, mergeReleaseList, stampAndKeep } from './lifecycle.mjs';
 import { consolidateKnownIssues, parseFrontMatter, parseKnownIssueEntries, parseReleaseInfo } from './learn.mjs';
 import { SCHEMA_VERSION, buildReleases, knownIssueToRecord, linkKnownIssuesToTsgs, releaseToRecord, tsgToRecord } from './records.mjs';
 import { formatErrors, validateIndex } from './schema.mjs';
 import { pool } from './fetch.mjs';
 import { isExcludedTsgPath, parseReadmeIndex, parseTsg, TSG_REPO } from './tsg.mjs';
-import { compareTrains } from './versions.mjs';
+import { compareTrains, trainKey } from './versions.mjs';
 
 /** Learn: release information + known issues. Throws when the markdown can't be read or parsed at all. */
 async function loadLearn(source, { log, warn }) {
@@ -74,7 +75,7 @@ const attempt = async (fn) => {
  *
  * @returns {{ index: object, sourceText: Record<string,string>, degraded: object[] }}
  */
-export async function buildIndex({ source, baseline = null, thresholds = null, log = () => {}, warn = () => {} }) {
+export async function buildIndex({ source, baseline = null, thresholds = null, now = new Date().toISOString(), log = () => {}, warn = () => {} }) {
   const io = { log, warn };
   const learnRes = await attempt(() => loadLearn(source, io));
   if (learnRes.error) warn(`Learn sources unavailable: ${learnRes.error.message}`);
@@ -85,7 +86,8 @@ export async function buildIndex({ source, baseline = null, thresholds = null, l
     ? assessSources({ tsg: Infinity, 'known-issue': Infinity, releases: freshReleases.length }, baseline, { learnError: learnRes.error }, thresholds).learn
     : { degraded: Boolean(learnRes.error), problems: learnRes.error ? [learnRes.error.message] : [] };
   const releasesForTsg = learnPreCheck.degraded && baseline ? baseline.releases : freshReleases;
-  const knownTrainsAsc = releasesForTsg.map((r) => r.id).sort(compareTrains);
+  // Trains that were removed upstream still count as known, so archived guides keep resolving to them.
+  const knownTrainsAsc = [...new Set([...releasesForTsg, ...(baseline?.releases ?? [])].map((r) => r.id))].sort(compareTrains);
 
   const tsgRes = await attempt(() => loadTsgs(source, io));
   if (tsgRes.error) warn(`TSG sources unavailable: ${tsgRes.error.message}`);
@@ -143,9 +145,32 @@ export async function buildIndex({ source, baseline = null, thresholds = null, l
   }
 
   const fromBaseline = (types) => (baseline?.items ?? []).filter((i) => types.includes(i.type)).map((i) => structuredClone(i));
-  const tsgOut = assessment.tsg.degraded ? fromBaseline(['tsg']) : tsgRecords;
-  const learnOut = assessment.learn.degraded ? fromBaseline(['known-issue', 'release']) : [...kiRecords, ...releaseRecords];
-  const releasesOut = assessment.learn.degraded ? structuredClone(baseline.releases) : freshReleases;
+  const baselineItems = baseline?.items ?? [];
+  const baselineAt = baseline?.generatedAt ?? null;
+
+  // Archive semantics: a healthy source group refreshes its records, but anything that was in the previous
+  // index and has vanished upstream is kept and marked as removed. A degraded group is carried over untouched.
+  let tsgOut;
+  let learnOut;
+  let releasesOut;
+  const lifecycle = { removed: 0, newlyRemoved: 0, restored: 0 };
+  const tally = (r) => {
+    lifecycle.removed += r.removed;
+    lifecycle.newlyRemoved += r.newlyRemoved;
+    lifecycle.restored += r.restored;
+    return r.items;
+  };
+  if (assessment.tsg.degraded) tsgOut = fromBaseline(['tsg']);
+  else tsgOut = tally(stampAndKeep({ fresh: tsgRecords, baselineItems, types: ['tsg'], now, baselineAt }));
+  if (assessment.learn.degraded) {
+    learnOut = fromBaseline(['known-issue', 'release']);
+    releasesOut = structuredClone(baseline.releases);
+  } else {
+    learnOut = tally(stampAndKeep({ fresh: [...kiRecords, ...releaseRecords], baselineItems, types: ['known-issue', 'release'], now, baselineAt }));
+    releasesOut = mergeReleaseList({ fresh: freshReleases, baselineReleases: baseline?.releases ?? [], now, baselineAt }).sort((a, b) => trainKey(b.id) - trainKey(a.id));
+  }
+  if (lifecycle.newlyRemoved) warn(`${lifecycle.newlyRemoved} item(s) disappeared from the official sources; kept in the archive and marked as removed.`);
+  if (lifecycle.restored) log(`${lifecycle.restored} previously removed item(s) are back in the official sources.`);
 
   const records = [...tsgOut, ...learnOut];
 
@@ -162,15 +187,18 @@ export async function buildIndex({ source, baseline = null, thresholds = null, l
   }
 
   if (!assessment.tsg.degraded && !assessment.learn.degraded) linkKnownIssuesToTsgs(records, kiByRecordId);
-  else symmetrizeLinks(records);
+  symmetrizeLinks(records);
 
-  const counts = { tsg: 0, 'known-issue': 0, release: 0 };
-  for (const rec of records) counts[rec.type]++;
+  const counts = { tsg: 0, 'known-issue': 0, release: 0, archived: 0 };
+  for (const rec of records) {
+    counts[rec.type]++;
+    if (isRemoved(rec)) counts.archived++;
+  }
 
   const degraded = degradedEntries(assessment, baseline);
   const index = {
     schemaVersion: SCHEMA_VERSION,
-    generatedAt: new Date().toISOString(),
+    generatedAt: now,
     sources: [
       { name: 'Azure/AzureLocal-Supportability', url: `https://github.com/${TSG_REPO}`, ref: assessment.tsg.degraded ? null : (tsgRes.value?.tree.ref ?? null), count: counts.tsg },
       { name: 'Learn: Azure Local known issues', url: 'https://learn.microsoft.com/azure/azure-local/known-issues', ref: null, count: counts['known-issue'] },

@@ -187,6 +187,20 @@ When a source is served from cache, the index carries a `degraded` entry (source
 
 Tuning (environment variables): `AZL_MIN_TSG`, `AZL_MIN_KNOWN_ISSUES`, `AZL_MIN_RELEASES`, `AZL_MIN_RATIO` (default `0.7`), `AZL_MAX_STALE_DAYS` (default `14`), `AZL_BASELINE_FILE` (default `.cache/last-good-index.json`). Fixture builds (`--fixtures`) skip these checks.
 
+## 🗄️ Nothing is ever removed
+
+The official sources change: guides get renamed or deleted, Learn pages are reorganised, old releases drop out of the tables. This project is an **archive**, not a mirror.
+
+- 🏷️ **Removed upstream ≠ removed here.** An item that was in the previous index but is missing from a fresh build is **kept**, marked `lifecycle.state = "removed"` with `firstSeen`, `lastSeen` and `removedAt`. In the UI it shows a dashed *Removed from source* badge, a note with the dates, and (for guides) a **file history** link that still works after deletion. Removed items stay searchable but rank below live ones.
+- ♻️ **Reappearing is handled.** If an item comes back it simply turns active again and keeps its original `firstSeen`.
+- 🚂 **Release trains too.** A train that disappears from the release tables stays in the release list, flagged as removed.
+- 🧱 **A durable archive on a `data` branch.** After every verified build the workflow commits the final `index.json` to the `data` branch (only when the content changed, so history stays small). It survives cache eviction and an unreachable website, keeps the complete history of every daily change, and is the baseline the next build merges against. Pushing to `data` never triggers a deploy, and CI ignores it. The step is `continue-on-error`, so a failed archive push never blocks a deploy.
+- 🔢 **Guardrails stay honest.** The shrink checks compare *live* items only, so archived items can't hide a broken source (and a source dropping 40 % of its pages can't silently delete anything).
+
+Good to know: items are matched by id (a guide's path; a known issue's Microsoft bug id, or a hash of its text when it has none). A guide that is **renamed** therefore appears as a new item with the old one archived, and a known issue **without a bug id whose text is edited** can leave its previous wording archived next to the new one.
+
+Restore or inspect the archive any time: `git fetch origin data && git show origin/data:index.json`.
+
 ## 🚀 Run it locally
 
 Requires **Node ≥ 22.18**.
@@ -252,7 +266,7 @@ Set `GITHUB_TOKEN` (or log in with `gh auth login`) to raise API limits and get 
 | Workflow | Triggers | What it does |
 | --- | --- | --- |
 | 🧪 [`ci.yml`](.github/workflows/ci.yml) | push · pull request · manual | `npm ci` → unit tests → typecheck → lint *(if configured)* → **index from fixtures** (no dependency on live sources) → Vite build → uploads a preview artifact |
-| 🚀 [`deploy.yml`](.github/workflows/deploy.yml) | push to `main`/`master` · **daily 04:17 UTC** · manual | tests → `configure-pages` → restore caches → fetch the **last published index** (guardrail baseline) → **live** `build:index` → apply cached Copilot enrichment *(new calls only on schedule / manual runs)* → `check-index` → `vite build` with the right `base` → `check-index --dist` → `upload-pages-artifact` → `deploy-pages` |
+| 🚀 [`deploy.yml`](.github/workflows/deploy.yml) | push to `main`/`master` · **daily 04:17 UTC** · manual | tests → `configure-pages` → restore caches → fetch the **last published index** and the **`data`-branch archive** (baseline; the newer wins) → **live** `build:index` → apply cached Copilot enrichment *(new calls only on schedule / manual runs)* → `check-index` → `vite build` with the right `base` → `check-index --dist` → **commit the index to the `data` branch** → `upload-pages-artifact` → `deploy-pages` |
 
 - 🔐 Permissions: `pages: write`, `id-token: write`, `contents: read`, plus `copilot-requests: write` for the optional `GITHUB_TOKEN` Copilot auth.
 - 🚦 `concurrency: pages` (never cancels an in-flight deployment).
@@ -282,6 +296,7 @@ Set `GITHUB_TOKEN` (or log in with `gh auth login`) to raise API limits and get 
 ├─ ⚙️ scripts/
 │   ├─ build-index.mjs     live / fixture index builder (CLI)
 │   ├─ check-index.mjs     pre-publish sanity gate (CLI)
+│   ├─ archive.mjs         durable `data`-branch archive: load baseline / publish (CLI)
 │   ├─ enrich.mjs          Copilot enrichment (CLI)
 │   ├─ make-fixtures.mjs   refresh test fixtures
 │   └─ lib/                tsg · learn · markdown · versions · records · guard · enrich · providers · sources · schema
@@ -297,6 +312,7 @@ Set `GITHUB_TOKEN` (or log in with `gh auth login`) to raise API limits and get 
 - Parsing is heuristic. TSG formats vary; where titles don't state a version the release stays empty (and shows under *“Guides without a stated release”*). Copilot enrichment narrows this over time.
 - Learn is read from its source markdown; if the table layout changes, the [guardrails](#️-guardrails-never-ship-an-empty-site) keep serving the last good data instead of publishing a partial index.
 - Known issues only list releases for which Microsoft documented them.
+- Archived items can't be updated any more (their source is gone), so treat them as historical reference.
 
 ## 📜 Credits & licensing
 

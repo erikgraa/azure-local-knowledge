@@ -44,6 +44,18 @@
   },
   "definitions": {
     "stringArray": { "type": "array", "items": { "type": "string" } },
+    "lifecycle": {
+      "description": "Archive bookkeeping: items are never deleted; ones that vanished from the official sources are kept as 'removed'.",
+      "type": ["object", "null"],
+      "required": ["state", "firstSeen", "lastSeen"],
+      "additionalProperties": false,
+      "properties": {
+        "state": { "enum": ["active", "removed"] },
+        "firstSeen": { "type": "string" },
+        "lastSeen": { "type": "string" },
+        "removedAt": { "type": "string" }
+      }
+    },
     "release": {
       "type": "object",
       "required": ["id", "supported", "osVersions", "solutionVersions"],
@@ -57,6 +69,7 @@
         "osVersions": { "$ref": "#/definitions/stringArray" },
         "osBuilds": { "$ref": "#/definitions/stringArray" },
         "knownIssuesLink": { "type": ["string", "null"] },
+        "lifecycle": { "$ref": "#/definitions/lifecycle" },
         "solutionVersions": {
           "type": "array",
           "items": {
@@ -141,6 +154,7 @@
           }
         },
         "excerpt": { "type": ["string", "null"] },
+        "lifecycle": { "$ref": "#/definitions/lifecycle" },
         "release": { "type": ["object", "null"] }
       }
     }

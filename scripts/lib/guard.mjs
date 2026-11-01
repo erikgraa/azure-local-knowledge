@@ -34,8 +34,9 @@ export function thresholdsFromEnv(env = process.env) {
 }
 
 export function countsOf(index) {
-  const counts = { tsg: 0, 'known-issue': 0, release: 0, releases: index?.releases?.length ?? 0 };
-  for (const i of index?.items ?? []) if (i.type in counts) counts[i.type]++;
+  const live = (x) => x?.lifecycle?.state !== 'removed';
+  const counts = { tsg: 0, 'known-issue': 0, release: 0, releases: (index?.releases ?? []).filter(live).length };
+  for (const i of index?.items ?? []) if (i.type in counts && live(i)) counts[i.type]++;
   return counts;
 }
 

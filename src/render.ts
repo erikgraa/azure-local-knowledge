@@ -34,6 +34,9 @@ function badges(item: Item, ctx: CardContext): string {
           : AFFECTS_LABEL[ctx.affects];
     out.push(`<span class="badge affects affects-${ctx.affects}">${label}</span>`);
   }
+  if (item.lifecycle?.state === 'removed') {
+    out.push(`<span class="badge removed" title="No longer on the official site since ${esc(fmtDate(item.lifecycle.removedAt))}; kept here for reference">Removed from source</span>`);
+  }
   if (item.flags.length) out.push(`<span class="badge flag" title="${esc(item.flags.map((f) => f.message).join('\n'))}">${ICONS.warn}${item.flags.length}</span>`);
   return out.join('');
 }
@@ -56,7 +59,7 @@ export function renderCard(item: Item, ctx: CardContext): string {
   const os = item.osVersions.length ? item.osVersions.join(' / ') : '';
   const meta = [versions ? `Releases ${versions}` : item.versionText, os && !versions ? os : ''].filter(Boolean).join(' · ');
   return `
-  <article class="card" data-open="${esc(item.id)}" tabindex="0" aria-label="${esc(item.title)}">
+  <article class="card${item.lifecycle?.state === 'removed' ? ' is-removed' : ''}" data-open="${esc(item.id)}" tabindex="0" aria-label="${esc(item.title)}">
     <div class="card-badges">${badges(item, ctx)}<span class="spacer"></span>${item.lastUpdated ? `<time class="muted small" datetime="${esc(item.lastUpdated)}">${esc(fmtDate(item.lastUpdated))}</time>` : ''}</div>
     <h3 class="card-title">${highlight(item.title, ctx.terms)}</h3>
     ${summary ? `<p class="card-text">${highlight(snippet(summary, ctx.terms, 260), ctx.terms)}</p>` : ''}
@@ -91,10 +94,18 @@ export function renderDrawer(item: Item, data: IndexData, byId: Map<string, Item
     ['Solution versions', item.solutionVersions.join(', ')],
     ['First listed', item.introducedIn ?? ''],
     ['Last updated', fmtDate(item.lastUpdated)],
+    ['First seen here', fmtDate(item.lifecycle?.firstSeen)],
+    ['Removed upstream', fmtDate(item.lifecycle?.removedAt)],
     ['Source', item.source ?? ''],
   ].filter(([, v]) => v) as [string, string][];
 
   const section = (title: string, body: string) => (body ? `<section class="dsec"><h4>${esc(title)}</h4>${body}</section>` : '');
+
+  const removed = item.lifecycle?.state === 'removed';
+  const history = item.urls.find((u) => /\/commits\//.test(u.url));
+  const archivedNote = removed
+    ? `<div class="callout archived">${ICONS.warn}<p><strong>No longer on the official ${item.type === 'tsg' ? 'Supportability repo' : 'Microsoft Learn pages'}</strong> (last seen ${esc(fmtDate(item.lifecycle?.lastSeen))}, removed ${esc(fmtDate(item.lifecycle?.removedAt))}). It is kept here for reference and may be outdated, fixed or replaced.${history ? ` <a href="${esc(history.url)}" target="_blank" rel="noopener noreferrer">View its file history</a>.` : ''}</p></div>`
+    : '';
 
   return `
   <div class="drawer-head">
@@ -103,7 +114,8 @@ export function renderDrawer(item: Item, data: IndexData, byId: Map<string, Item
   </div>
   <h2 class="drawer-title" id="drawer-title">${esc(item.title)}</h2>
   <div class="drawer-links">${links.map((l) => `<a class="btn primary small" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.label)}${ICONS.external}</a>`).join('')}<button class="btn small" type="button" data-share>${ICONS.link}Copy link</button></div>
-  ${item.type === 'tsg' ? `<div class="callout info">${ICONS.link}<p>This is a summary. The full step-by-step guide, screenshots and scripts are in the <a href="${esc(item.url)}" target="_blank" rel="noopener noreferrer">source TSG</a>.</p></div>` : ''}
+  ${archivedNote}
+  ${item.type === 'tsg' && !removed ? `<div class="callout info">${ICONS.link}<p>This is a summary. The full step-by-step guide, screenshots and scripts are in the <a href="${esc(item.url)}" target="_blank" rel="noopener noreferrer">source TSG</a>.</p></div>` : ''}
   ${item.flags.length ? `<div class="callout warn">${ICONS.warn}<div>${item.flags.map((f) => `<p><strong>${esc(f.kind.replace(/-/g, ' '))}:</strong> ${esc(f.message)}</p>`).join('')}</div></div>` : ''}
   ${section('Symptoms', `${item.symptomSummary ? `<p class="lead">${esc(item.symptomSummary)}</p>` : ''}${item.symptoms ? `<p class="prewrap">${esc(item.symptoms)}</p>` : ''}`)}
   ${section('Error text', item.errorStrings.map(codeBlock).join(''))}
