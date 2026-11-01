@@ -271,6 +271,16 @@ select {
 .enrich-note svg { color: var(--accent-2); margin-top: 3px; }
 
 .footer { max-width: 1280px; margin: 0 auto; padding: 8px 20px 40px; text-align: center; }
+.disclaimer {
+  max-width: 860px; margin: 8px auto 14px; padding: 16px 20px; text-align: left; font-size: 13.5px; color: var(--text);
+  background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--accent-2); border-radius: 12px; box-shadow: var(--shadow);
+}
+.disclaimer p { margin: 8px 0 0; line-height: 1.55; }
+.disclaimer-title { display: flex; align-items: center; gap: 8px; font-size: 14.5px; }
+.disclaimer-title svg { color: var(--accent-2); font-size: 17px; }
+.disclaimer-links { color: var(--muted); }
+.disclaimer .trademark { color: var(--muted); font-size: 12.5px; }
+.footer-stats { margin: 0; }
 .hints { margin: 10px 0 0; }
 kbd { font: 11.5px var(--mono); padding: 1px 6px; border-radius: 6px; background: var(--surface); border: 1px solid var(--border); border-bottom-width: 2px; }
 .notice-bar { display: flex; gap: 10px; align-items: flex-start; max-width: 1240px; margin: 14px auto 0; padding: 11px 14px; border-radius: 12px; background: var(--warn-soft); color: var(--warn); font-size: 14px; }

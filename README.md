@@ -17,7 +17,7 @@ Supportability TSGs 🛠️ + release known issues 📋 + release information �
 
 </div>
 
-> ⚠️ **Unofficial community tool.** Not affiliated with or endorsed by Microsoft. Always confirm fixes in the linked source (GitHub TSG / Microsoft Learn) before acting on a production cluster.
+> ⚠️ **Unofficial community tool.** This project is not affiliated with, endorsed by, or sponsored by Microsoft. Azure and Azure Local are trademarks of Microsoft Corporation. Always confirm fixes in the linked source (GitHub TSG / Microsoft Learn) before acting on a production cluster.
 
 ---
 
