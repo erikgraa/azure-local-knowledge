@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://azlocal-triage/schema/enrichment.schema.json",
+  "$id": "https://azure-local-knowledge/schema/enrichment.schema.json",
   "title": "Copilot enrichment response",
   "description": "What the enrichment model must return: one result per requested item.",
   "type": "object",

@@ -1,11 +1,13 @@
 <div align="center">
 
-<img src="docs/banner.png" alt="AzLocalTriage – Paste an error. Pick your release. Get the fix." width="100%">
+<img src="docs/banner.png" alt="Azure Local Compendium – Paste an error. Pick your release. Find the fix." width="100%">
 
-# 🩺 AzLocalTriage
+# 📚 Azure Local Compendium
 
-**One searchable index for troubleshooting [Azure Local](https://learn.microsoft.com/azure/azure-local/).**
+**One searchable place for troubleshooting [Azure Local](https://learn.microsoft.com/azure/azure-local/).**
 Supportability TSGs 🛠️ + release known issues 📋 + release information 🏷️ — merged, normalized, and searchable in your browser.
+
+### 🌐 Live demo: **[knowledge.azurelocal.graa.dev](https://knowledge.azurelocal.graa.dev)**
 
 [![CI](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
 [![Deploy](../../actions/workflows/deploy.yml/badge.svg)](../../actions/workflows/deploy.yml)
@@ -28,7 +30,7 @@ Troubleshooting Azure Local means hopping between two places:
 | 🛠️ [**Azure/AzureLocal-Supportability**](https://github.com/Azure/AzureLocal-Supportability) | Hundreds of troubleshooting guides (TSGs) – symptoms, error text, mitigations |
 | 📋 [**Azure Local release notes**](https://learn.microsoft.com/azure/azure-local/known-issues) | Fixed / known issues and the OS/solution builds for every release (2411 → 2610…) |
 
-**AzLocalTriage** crawls both, normalizes them into one JSON index, and ships a fast static UI: paste the error you're staring at, pick your release, get the matching guide and the known issue that explains it.
+**Azure Local Compendium** crawls both, normalizes them into one JSON index, and ships a fast static UI: paste the error you're staring at, pick your release, get the matching guide and the known issue that explains it.
 
 ## ✨ Features
 
@@ -173,6 +175,8 @@ If neither is configured the enrichment step is **skipped** (with a notice) and 
 Requires **Node ≥ 22.18**.
 
 ```bash
+git clone https://github.com/<owner>/azure-local-knowledge.git
+cd azure-local-knowledge
 npm install
 
 npm run build:index                 # 🌐 fetch the live sources -> public/data/index.json
@@ -243,7 +247,11 @@ Set `GITHUB_TOKEN` (or log in with `gh auth login`) to raise API limits and get 
 
 1. **Settings → Pages → Build and deployment → Source: `GitHub Actions`** 👈 required – without it `deploy-pages` fails.
 2. *(Optional)* enable Copilot enrichment: add the `COPILOT_GITHUB_TOKEN` secret **or** the `COPILOT_USE_GITHUB_TOKEN=true` variable (see above).
-3. Push to `main`/`master` or run **Deploy** manually. The site appears at `https://<owner>.github.io/<repo>/`.
+3. Push to `main`/`master` or run **Deploy** manually. Without a custom domain the site appears at `https://<owner>.github.io/azure-local-knowledge/`.
+4. **Custom domain** (the demo uses `knowledge.azurelocal.graa.dev`):
+   - At your DNS provider add a `CNAME` record: `knowledge.azurelocal.graa.dev` → `<owner>.github.io`.
+   - **Settings → Pages → Custom domain** → `knowledge.azurelocal.graa.dev` → Save, then tick **Enforce HTTPS** once the certificate is issued.
+   - Nothing else to change: `actions/configure-pages` reports an empty base path for custom domains, so the build uses `/` automatically. (No `CNAME` file is needed with the Actions deployment source.)
 
 > ℹ️ Scheduled workflows only run on the default branch, and GitHub pauses them after 60 days without repository activity – re-enable from the *Actions* tab if needed.
 

@@ -24,7 +24,7 @@ async function request(url, { headers = {}, retries = 4, json = false } = {}) {
   let lastErr;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const res = await fetch(url, { headers: { 'user-agent': 'azlocal-triage-build', ...headers } });
+      const res = await fetch(url, { headers: { 'user-agent': 'azure-local-knowledge-build', ...headers } });
       if (res.ok) return json ? await res.json() : await res.text();
       if ([429, 502, 503, 504].includes(res.status) || (res.status === 403 && res.headers.get('x-ratelimit-remaining') === '0')) {
         lastErr = new Error(`${res.status} ${url}`);

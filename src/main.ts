@@ -58,9 +58,9 @@ function paintThemeButton() {
 function shell() {
   $('#app').innerHTML = `
   <header class="topbar">
-    <a class="brand" href="${esc(location.pathname)}" aria-label="AzLocalTriage home">
+    <a class="brand" href="${esc(location.pathname)}" aria-label="Azure Local Compendium home">
       <span class="logo" aria-hidden="true"><img src="${import.meta.env.BASE_URL}favicon.svg" alt="" width="36" height="36" /></span>
-      <span class="brand-text"><strong>AzLocalTriage</strong><span class="muted small">Azure Local troubleshooting index</span></span>
+      <span class="brand-text"><strong>Azure Local Compendium</strong><span class="muted small">Troubleshooting guides &amp; known issues</span></span>
     </a>
     <nav class="tabs" aria-label="View">
       <button type="button" class="tab" data-view="search">Search</button>
@@ -320,7 +320,7 @@ function showDrawer(item: Item) {
   drawer.hidden = false;
   $('#scrim').hidden = false;
   document.body.classList.add('drawer-open');
-  document.title = `${item.title} · AzLocalTriage`;
+  document.title = `${item.title} · Azure Local Compendium`;
   if (wasHidden) {
     lastFocus = document.activeElement as HTMLElement | null;
     drawer.scrollTop = 0;
@@ -334,7 +334,7 @@ function hideDrawer(restoreFocus = true) {
   drawer.hidden = true;
   $('#scrim').hidden = true;
   document.body.classList.remove('drawer-open');
-  document.title = 'AzLocalTriage — Azure Local troubleshooting index';
+  document.title = 'Azure Local Compendium — troubleshooting guides & known issues';
   if (restoreFocus) lastFocus?.focus?.();
 }
 

@@ -1,5 +1,5 @@
 {
-  "name": "azlocal-triage",
+  "name": "azure-local-knowledge",
   "version": "0.1.0",
   "private": true,
   "description": "Searchable troubleshooting index for Azure Local: Supportability TSGs + release known issues.",

@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://azlocal-triage/schema/index.schema.json",
-  "title": "AzLocalTriage index",
+  "$id": "https://azure-local-knowledge/schema/index.schema.json",
+  "title": "Azure Local Compendium index",
   "type": "object",
   "required": ["schemaVersion", "generatedAt", "sources", "releases", "items"],
   "additionalProperties": false,

@@ -1,6 +1,6 @@
 {
-  "name": "AzLocalTriage",
-  "short_name": "AzLocalTriage",
+  "name": "Azure Local Compendium",
+  "short_name": "Compendium",
   "description": "Azure Local troubleshooting guides and known issues in one searchable index.",
   "start_url": "./",
   "display": "standalone",
