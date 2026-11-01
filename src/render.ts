@@ -103,12 +103,13 @@ export function renderDrawer(item: Item, data: IndexData, byId: Map<string, Item
   </div>
   <h2 class="drawer-title" id="drawer-title">${esc(item.title)}</h2>
   <div class="drawer-links">${links.map((l) => `<a class="btn primary small" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.label)}${ICONS.external}</a>`).join('')}<button class="btn small" type="button" data-share>${ICONS.link}Copy link</button></div>
+  ${item.type === 'tsg' ? `<div class="callout info">${ICONS.link}<p>This is a summary. The full step-by-step guide, screenshots and scripts are in the <a href="${esc(item.url)}" target="_blank" rel="noopener noreferrer">source TSG</a>.</p></div>` : ''}
   ${item.flags.length ? `<div class="callout warn">${ICONS.warn}<div>${item.flags.map((f) => `<p><strong>${esc(f.kind.replace(/-/g, ' '))}:</strong> ${esc(f.message)}</p>`).join('')}</div></div>` : ''}
   ${section('Symptoms', `${item.symptomSummary ? `<p class="lead">${esc(item.symptomSummary)}</p>` : ''}${item.symptoms ? `<p class="prewrap">${esc(item.symptoms)}</p>` : ''}`)}
   ${section('Error text', item.errorStrings.map(codeBlock).join(''))}
   ${item.errorCodes.length ? section('Codes & identifiers', `<div class="chips">${item.errorCodes.map((c) => `<button class="chip code" type="button" data-search="${esc(c)}" title="Search for ${esc(c)}">${esc(c)}</button>`).join('')}</div>`) : ''}
   ${item.aliases.length ? section('Also searchable as', `<div class="chips">${item.aliases.map((a) => `<button class="chip" type="button" data-search="${esc(a)}">${esc(a)}</button>`).join('')}</div>`) : ''}
-  ${section('Mitigation', `${item.mitigationSummary ? `<p class="lead">${esc(item.mitigationSummary)}</p>` : ''}${item.mitigation ? `<p class="prewrap">${esc(item.mitigation)}</p>` : ''}${item.type === 'tsg' ? `<p class="muted small">The full step-by-step guide, screenshots and scripts are in the source TSG.</p>` : ''}`)}
+  ${section('Mitigation', `${item.mitigationSummary ? `<p class="lead">${esc(item.mitigationSummary)}</p>` : ''}${item.mitigation ? `<p class="prewrap">${esc(item.mitigation)}</p>` : ''}`)}
   ${item.releases.length ? section('Affected releases', `<div class="chips">${[...item.releases].reverse().map((r) => `<button class="chip" type="button" data-release="${esc(r)}" title="Show issues for ${esc(r)}">${esc(r)}</button>`).join('')}</div>`) : ''}
   ${related.length ? section('Related', `<ul class="related">${related.map(({ r, target }) => `<li><button type="button" class="rel" data-open="${esc(target.id)}"><span class="badge type type-${target.type}">${esc(TYPE_SHORT[target.type])}</span><span class="rel-title">${esc(target.title)}</span><span class="muted small">${esc(r.relation.replace(/-/g, ' '))}${r.reason ? ` — ${esc(r.reason)}` : ''}</span></button></li>`).join('')}</ul>`) : ''}
   ${section('Details', `<dl class="facts">${facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`)}
