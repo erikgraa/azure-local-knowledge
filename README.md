@@ -7,7 +7,7 @@
 **One searchable place for troubleshooting [Azure Local](https://learn.microsoft.com/azure/azure-local/).**
 Supportability TSGs 🛠️ + release known issues 📋 + release information 🏷️ — merged, normalized, and searchable in your browser.
 
-### 🌐 Live demo: **[knowledge.azurelocal.graa.dev](https://knowledge.azurelocal.graa.dev)**
+### 🌐 Live demo: **[knowledge.azl.graa.dev](https://knowledge.azl.graa.dev)**
 
 [![CI](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
 [![Deploy](../../actions/workflows/deploy.yml/badge.svg)](../../actions/workflows/deploy.yml)
@@ -266,9 +266,9 @@ Set `GITHUB_TOKEN` (or log in with `gh auth login`) to raise API limits and get 
 1. **Settings → Pages → Build and deployment → Source: `GitHub Actions`** 👈 required – without it `deploy-pages` fails.
 2. *(Optional)* enable Copilot enrichment: add the `COPILOT_GITHUB_TOKEN` secret **or** the `COPILOT_USE_GITHUB_TOKEN=true` variable (see above).
 3. Push to `main`/`master` or run **Deploy** manually. Without a custom domain the site appears at `https://<owner>.github.io/azure-local-knowledge/`.
-4. **Custom domain** (the demo uses `knowledge.azurelocal.graa.dev`):
-   - At your DNS provider add a `CNAME` record: `knowledge.azurelocal.graa.dev` → `<owner>.github.io`.
-   - **Settings → Pages → Custom domain** → `knowledge.azurelocal.graa.dev` → Save, then tick **Enforce HTTPS** once the certificate is issued.
+4. **Custom domain** (the demo uses `knowledge.azl.graa.dev`):
+   - At your DNS provider add a `CNAME` record: `knowledge.azl.graa.dev` → `<owner>.github.io`.
+   - **Settings → Pages → Custom domain** → `knowledge.azl.graa.dev` → Save, then tick **Enforce HTTPS** once the certificate is issued.
    - Nothing else to change: `actions/configure-pages` reports an empty base path for custom domains, so the build uses `/` automatically. (No `CNAME` file is needed with the Actions deployment source.)
 
 > ℹ️ Scheduled workflows only run on the default branch, and GitHub pauses them after 60 days without repository activity – re-enable from the *Actions* tab if needed.
