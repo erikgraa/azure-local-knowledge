@@ -148,7 +148,8 @@ The daily workflow runs `npm run enrich` after `build:index`. It **never** repla
 - 🧪 **Schema-validated** against [`schema/enrichment.schema.json`](schema/enrichment.schema.json); over-long strings are clamped, bad structure is rejected, unknown ids are dropped.
 - 🛟 **Always falls back** to deterministic data: no secret, CLI error, invalid JSON, schema failure or timeout never fails the deploy (use `--strict` to make it fail).
 - 🔒 **Sandboxed**: the Copilot CLI runs with `--deny-tool=shell --deny-tool=write`, in an empty temp dir, source text is marked *untrusted* in the prompt. It's pure text-in/text-out.
-- 📊 **Budgeted**: `ENRICH_MAX_ITEMS` per run (default 60, TSGs and open issues first), so the backlog is processed over a few days.
+- 📊 **Budgeted**: `ENRICH_MAX_ITEMS` per run (default 60, TSGs and open issues first), so the backlog is processed over a few days. Each item is enriched **once** (cached by content hash), so cost is bounded by the backlog plus whatever changes upstream.
+- 💸 **Pushes never spend Copilot calls**: deploys triggered by a push to `main` only re-publish using the cached enrichment. New enrichment runs on the **daily schedule** and via **Run workflow** (`max_items`, e.g. `300` to clear a backlog in one go). Bumping `PROMPT_VERSION` re-enriches everything on purpose.
 - 📋 The run's **step summary** lists everything the model flagged.
 
 ### 🔑 Required secret & permissions
@@ -251,7 +252,7 @@ Set `GITHUB_TOKEN` (or log in with `gh auth login`) to raise API limits and get 
 | Workflow | Triggers | What it does |
 | --- | --- | --- |
 | 🧪 [`ci.yml`](.github/workflows/ci.yml) | push · pull request · manual | `npm ci` → unit tests → typecheck → lint *(if configured)* → **index from fixtures** (no dependency on live sources) → Vite build → uploads a preview artifact |
-| 🚀 [`deploy.yml`](.github/workflows/deploy.yml) | push to `main`/`master` · **daily 04:17 UTC** · manual | tests → `configure-pages` → restore caches → fetch the **last published index** (guardrail baseline) → **live** `build:index` → *(optional)* Copilot enrichment → `check-index` → `vite build` with the right `base` → `check-index --dist` → `upload-pages-artifact` → `deploy-pages` |
+| 🚀 [`deploy.yml`](.github/workflows/deploy.yml) | push to `main`/`master` · **daily 04:17 UTC** · manual | tests → `configure-pages` → restore caches → fetch the **last published index** (guardrail baseline) → **live** `build:index` → apply cached Copilot enrichment *(new calls only on schedule / manual runs)* → `check-index` → `vite build` with the right `base` → `check-index --dist` → `upload-pages-artifact` → `deploy-pages` |
 
 - 🔐 Permissions: `pages: write`, `id-token: write`, `contents: read`, plus `copilot-requests: write` for the optional `GITHUB_TOKEN` Copilot auth.
 - 🚦 `concurrency: pages` (never cancels an in-flight deployment).
