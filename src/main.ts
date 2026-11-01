@@ -62,10 +62,6 @@ function shell() {
       <span class="logo" aria-hidden="true"><img src="${import.meta.env.BASE_URL}favicon.svg" alt="" width="36" height="36" /></span>
       <span class="brand-text"><strong>Azure Local Compendium</strong><span class="muted small">Troubleshooting guides &amp; known issues</span></span>
     </a>
-    <nav class="tabs" aria-label="View">
-      <button type="button" class="tab" data-view="search">Search</button>
-      <button type="button" class="tab" data-view="version">My version</button>
-    </nav>
     <div class="top-actions">
       <button type="button" class="icon-btn only-narrow" id="toggle-filters" aria-label="Filters" title="Filters">${ICONS.filter}</button>
       <button type="button" class="icon-btn" id="theme"></button>
@@ -81,6 +77,7 @@ function shell() {
         <textarea id="q" rows="1" placeholder="Paste an error, e.g. SecretNotFoundException, or describe the problem…" aria-label="Search troubleshooting guides and known issues" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
         <button type="button" class="icon-btn" id="clear" aria-label="Clear search" hidden>${ICONS.close}</button>
       </div>
+      <div class="release-row" id="release-row"></div>
       <div class="examples" id="examples"><span class="muted small">Try</span>${EXAMPLES.map((e) => `<button type="button" class="chip" data-search="${esc(e)}">${esc(e)}</button>`).join('')}</div>
       <p class="hints muted small only-wide"><kbd>/</kbd> search · <kbd>↓</kbd> <kbd>↑</kbd> browse results · <kbd>Enter</kbd> open · <kbd>Esc</kbd> close</p>
     </div>
@@ -176,11 +173,6 @@ function renderFilters(rows: Row[]) {
 
   $('#filters').innerHTML = `
     <div class="filter-head"><h2>Filters</h2>${active ? `<button type="button" class="link-btn" data-reset>Reset (${active})</button>` : ''}<button type="button" class="icon-btn only-narrow" data-close-filters aria-label="Close filters">${ICONS.close}</button></div>
-    <div class="fgroup">
-      <label class="flabel" for="release">Azure Local release</label>
-      <select id="release" data-release-select>${releaseOptions(state.release)}</select>
-      <p class="muted small">Only items that apply to that release are listed.</p>
-    </div>
     <div class="fgroup"><div class="flabel">Type</div>${(['tsg', 'known-issue', 'release'] as ItemType[]).map(typeRow).join('')}</div>
     <div class="fgroup"><div class="flabel">Known-issue status</div>${STATUSES.map(statusRow).join('')}</div>
     <div class="fgroup"><div class="flabel">Area</div><div class="area-list">${areaList.map((a) => `<label class="check"><input type="checkbox" data-filter="area" value="${esc(a)}"${state.areas.includes(a) ? ' checked' : ''}><span>${esc(a)}</span><em>${areas.get(a) ?? 0}</em></label>`).join('') || '<p class="muted small">No areas</p>'}</div></div>
@@ -235,23 +227,8 @@ function renderFlat(rows: Row[], terms: string[], release: Release | null, hidde
     ${othersHint(hidden)}`;
 }
 
-function renderVersionView(rows: Row[], terms: string[], hidden = 0): string {
-  const release = state.release ? (releaseById.get(state.release) ?? null) : null;
-  if (!release) {
-    const chips = data.releases
-      .filter((r) => r.supported)
-      .map((r) => `<button type="button" class="chip big" data-release="${esc(r.id)}">${esc(releaseLabel(r))}</button>`)
-      .join('');
-    // The picker never replaces search: matches for the current query are always listed underneath.
-    return `<section class="panel pick">
-      <h2>Which issues affect my version?</h2>
-      <p class="muted">Pick the Azure Local release your cluster runs (Azure portal → your cluster → Overview, or <code>Get-SolutionUpdate</code>; the train is the 4-digit number in <code>12.<b>2610</b>.1004.41</code>). You'll get the known issues listed for that release, the guides written for it, and guides that don't state a version.</p>
-      <div class="chips">${chips}</div>
-      <label class="flabel" for="release2">Or choose any release</label>
-      <select id="release2" data-release-select>${releaseOptions(null)}</select>
-    </section>${renderFlat(rows, terms, null)}`;
-  }
-
+/** Overview of one release (no search text): what is listed for it, grouped by how it relates. */
+function renderReleaseOverview(rows: Row[], terms: string[], release: Release, hidden = 0): string {
   const filtered = rows.filter((r) => itemPasses(r.item));
   const sorted = sortRows(filtered);
   const groups: { key: string; title: string; hint?: string; rows: Row[]; collapsed?: boolean }[] = [
@@ -265,7 +242,6 @@ function renderVersionView(rows: Row[], terms: string[], hidden = 0): string {
 
   const header = `<section class="panel banner">
     <div><h2>${esc(releaseLabel(release))}</h2><p class="muted small">${[release.osVersions.join(' / '), release.solutionVersions[0]?.version ? `solution ${release.solutionVersions[0].version}` : '', release.availabilityDate ? `available ${fmtDate(release.availabilityDate)}` : '', release.supported ? 'supported' : 'outside the supported window'].filter(Boolean).map(esc).join(' · ')}</p></div>
-    <select id="release2" data-release-select aria-label="Release">${releaseOptions(release.id)}</select>
   </section>`;
 
   if (!groups.length) return `${header}${emptyState(hidden)}${othersHint(hidden)}`;
@@ -306,10 +282,20 @@ function emptyState(otherReleaseMatches = 0): string {
 
 function filterFocusKey(): string | null {
   const a = document.activeElement as HTMLElement | null;
-  if (!a || !a.closest('#filters')) return null;
+  if (!a || !a.closest('#filters, #release-row')) return null;
   if (a.id) return `#${a.id}`;
-  if (a instanceof HTMLInputElement && a.dataset.filter) return `[data-filter="${a.dataset.filter}"][value="${CSS.escape(a.value)}"]`;
+  if (a instanceof HTMLInputElement && a.dataset.filter) return `#filters [data-filter="${a.dataset.filter}"][value="${CSS.escape(a.value)}"]`;
   return null;
+}
+
+/** The release picker under the search box: quick picks until a release is chosen, then a compact summary. */
+function renderReleaseRow() {
+  const quick = data.releases.filter((r) => r.supported).slice(0, 5);
+  const chosen = state.release ? releaseById.get(state.release) : null;
+  $('#release-row').innerHTML = `
+    <label class="muted small" for="release">${chosen ? 'Showing results for' : 'Which release are you on?'}</label>
+    <select id="release" data-release-select>${releaseOptions(state.release)}</select>
+    ${chosen ? `<button type="button" class="chip removable" data-release-clear>${esc(chosen.id)}${ICONS.close}</button>` : quick.map((r) => `<button type="button" class="chip" data-release="${esc(r.id)}">${esc(r.id)}</button>`).join('')}`;
 }
 
 function update() {
@@ -321,8 +307,8 @@ function update() {
   // Filters are re-rendered on every change; keep keyboard focus where the user was.
   const refocus = filterFocusKey();
   renderFilters(rows);
-  if (refocus) document.querySelector<HTMLElement>(`#filters ${refocus}`)?.focus({ preventScroll: true });
-  document.querySelectorAll<HTMLElement>('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === state.view));
+  renderReleaseRow();
+  if (refocus) document.querySelector<HTMLElement>(refocus)?.focus({ preventScroll: true });
   ($('#clear') as HTMLButtonElement).hidden = !state.q;
   const box = $('#q') as HTMLTextAreaElement;
   if (box.value !== state.q) {
@@ -330,12 +316,8 @@ function update() {
     autoGrow(box);
   }
 
-  let html: string;
-  if (state.view === 'version') {
-    html = renderVersionView(rows, terms, hidden);
-  } else {
-    html = renderFlat(rows, terms, release, hidden);
-  }
+  // A release with no search text gets the grouped overview; anything typed gets one ranked list.
+  const html = release && !state.q.trim() ? renderReleaseOverview(rows, terms, release, hidden) : renderFlat(rows, terms, release, hidden);
   $('#results').innerHTML = html;
 
   const drawer = state.id ? byId.get(state.id) : null;
@@ -529,19 +511,19 @@ function bind() {
   });
 
   document.addEventListener('click', async (e) => {
-    const t = (e.target as HTMLElement).closest<HTMLElement>('[data-view],[data-search],[data-release],[data-others],[data-open],[data-close],[data-copy],[data-share],[data-more],[data-expand],[data-remove],[data-reset],[data-close-filters],#toggle-filters,#theme,#clear,#scrim');
+    const t = (e.target as HTMLElement).closest<HTMLElement>('[data-search],[data-release],[data-release-clear],[data-others],[data-open],[data-close],[data-copy],[data-share],[data-more],[data-expand],[data-remove],[data-reset],[data-close-filters],#toggle-filters,#theme,#clear,#scrim');
     if (!t) return;
     if (t.tagName === 'A' || (e.target as HTMLElement).closest('a')) return;
 
-    if (t.dataset.view) {
-      commit({ view: t.dataset.view as State['view'], id: null });
-    } else if (t.dataset.search !== undefined) {
-      commit({ q: t.dataset.search, view: state.view });
+    if (t.dataset.search !== undefined) {
+      commit({ q: t.dataset.search });
       box.value = t.dataset.search;
       autoGrow(box);
       box.focus();
     } else if (t.dataset.release) {
-      commit({ release: t.dataset.release, view: 'version', others: false });
+      commit({ release: t.dataset.release, others: false });
+    } else if (t.hasAttribute('data-release-clear')) {
+      commit({ release: null, others: false });
     } else if (t.dataset.others !== undefined) {
       commit({ others: t.dataset.others === '1' });
     } else if (t.dataset.open) {

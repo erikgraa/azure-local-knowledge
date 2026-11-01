@@ -37,7 +37,7 @@ Troubleshooting Azure Local means hopping between two places:
 | | |
 | --- | --- |
 | 🔎 **Paste-an-error search** | Fuzzy, typo-tolerant full-text search (MiniSearch) that understands `SecretNotFoundException`, `0x800706BA`, `exitcode: 42`, and whole pasted log lines (GUIDs, IPs and timestamps are stripped before matching). |
-| 🧭 **“My version” view** | Pick your release and see only what applies to it: issues *listed for it*, guides *written for it*, guides that *don't state a release*, and issues *fixed in the next two releases* (so upgrading is the fix). Matches that are documented only for other releases are hidden, with a one-click “Show them” so a search is never a dead end. |
+| 🧭 **Release picker** | Choose your release under the search box and see only what applies to it (a grouped overview when nothing is typed, one ranked list when searching): issues *listed for it*, guides *written for it*, guides that *don't state a release*, and issues *fixed in the next two releases* (so upgrading is the fix). Matches that are documented only for other releases are hidden, with a one-click “Show them” so a search is never a dead end. |
 | 🎛️ **Filters** | Release/version · area · type (TSG / known issue / release) · known-issue status (open / fixed / expected). |
 | 🧾 **Result cards + detail drawer** | Symptoms, error text (copy button), mitigation snippet, affected releases, related items, and deep links to the **GitHub TSG** or the **Learn known-issue section**. |
 | 🔗 **Shareable URLs** | Every search, filter, release and open item lives in the query string. |
@@ -53,7 +53,7 @@ Troubleshooting Azure Local means hopping between two places:
     <td width="50%"><b>🌙 Search (dark)</b><br><img src="docs/screenshot-search-dark.png" alt="Dark mode search for SecretNotFoundException"></td>
   </tr>
   <tr>
-    <td><b>🧭 My version</b><br><img src="docs/screenshot-version.png" alt="Release 2606 grouped view"></td>
+    <td><b>🧭 Release overview</b><br><img src="docs/screenshot-version.png" alt="Release 2606 grouped view"></td>
     <td><b>🧾 Detail drawer</b><br><img src="docs/screenshot-details.png" alt="Detail drawer for Missing SPN during deployment"></td>
   </tr>
 </table>
@@ -235,7 +235,6 @@ Set `GITHUB_TOKEN` (or log in with `gh auth login`) to raise API limits and get 
 | Param | Example | Meaning |
 | --- | --- | --- |
 | `q` | `?q=SecretNotFoundException` | Search text |
-| `view` | `view=version` | `search` (default) or `version` (“My version”) |
 | `v` | `v=2606` | Release train: only items that apply to it are listed |
 | `others` | `others=1` | With `v`: also list matches documented only for other releases |
 | `type` | `type=tsg~known-issue` | `tsg`, `known-issue`, `release` (`~`-separated) |
