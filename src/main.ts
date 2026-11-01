@@ -128,13 +128,16 @@ function baseRows(): Row[] {
 function sortRows(rows: Row[]): Row[] {
   const hasQuery = Boolean(state.q.trim());
   const updated = (r: Row) => r.item.lastUpdated ?? '';
+  const gone = (r: Row) => (r.item.lifecycle?.state === 'removed' ? 1 : 0);
   return [...rows].sort((a, b) => {
     if (state.sort === 'updated' || !hasQuery) {
+      if (gone(a) !== gone(b)) return gone(a) - gone(b);
       const d = updated(b).localeCompare(updated(a));
       if (d) return d;
       return b.score - a.score;
     }
-    const bump = (r: Row) => (r.affects === 'yes' ? 1.12 : r.affects === 'no' ? 0.85 : 1);
+    // Items removed from the official sources stay findable but rank below live ones.
+    const bump = (r: Row) => (r.affects === 'yes' ? 1.12 : r.affects === 'no' ? 0.85 : 1) * (gone(r) ? 0.6 : 1);
     return b.score * bump(b) - a.score * bump(a);
   });
 }
@@ -290,7 +293,7 @@ function filterFocusKey(): string | null {
 
 /** The release picker under the search box: quick picks until a release is chosen, then a compact summary. */
 function renderReleaseRow() {
-  const quick = data.releases.filter((r) => r.supported).slice(0, 5);
+  const quick = data.releases.filter((r) => r.supported && r.lifecycle?.state !== 'removed').slice(0, 5);
   const chosen = state.release ? releaseById.get(state.release) : null;
   $('#release-row').innerHTML = `
     <label class="muted small" for="release">${chosen ? 'Showing results for' : 'Which release are you on?'}</label>
@@ -327,7 +330,8 @@ function update() {
 
 function renderFooter() {
   const counts = data.stats ?? {};
-  $('#footer').innerHTML = `${plural(counts.tsg ?? 0, 'guide')} · ${plural(counts['known-issue'] ?? 0, 'known issue')} · ${plural(data.releases.length, 'release train')} · index built ${esc(fmtDate(data.generatedAt))}${data.enrichment ? ` · ${plural(data.enrichment.enrichedItems, 'item')} refined by Copilot` : ''}.
+  const archived = data.items.filter((i) => i.lifecycle?.state === 'removed').length;
+  $('#footer').innerHTML = `${plural((counts.tsg ?? 0) - data.items.filter((i) => i.type === 'tsg' && i.lifecycle?.state === 'removed').length, 'guide')} · ${plural((counts['known-issue'] ?? 0) - data.items.filter((i) => i.type === 'known-issue' && i.lifecycle?.state === 'removed').length, 'known issue')} · ${plural(data.releases.length, 'release train')}${archived ? ` · ${plural(archived, 'archived item')} no longer on the official sites` : ''} · index built ${esc(fmtDate(data.generatedAt))}${data.enrichment ? ` · ${plural(data.enrichment.enrichedItems, 'item')} refined by Copilot` : ''}.
     Sources: ${data.sources.map((s) => `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.name)}</a>`).join(' · ')}. Unofficial; always confirm in the linked source. <a href="https://github.com/erikgraa/azure-local-knowledge/blob/main/NOTICE.md" target="_blank" rel="noopener noreferrer">Notice &amp; licences</a>.`;
 }
 

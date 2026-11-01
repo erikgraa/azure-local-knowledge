@@ -36,6 +36,7 @@ export function blankRecord(over) {
     enrichment: null,
     excerpt: null,
     release: null,
+    lifecycle: null,
     ...over,
   };
 }

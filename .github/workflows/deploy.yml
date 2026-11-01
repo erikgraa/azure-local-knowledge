@@ -39,6 +39,12 @@ jobs:
     name: Build site
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # contents: write is only used to push the history archive to the `data` branch (never to main).
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+      copilot-requests: write
     steps:
       - uses: actions/checkout@v7
 
@@ -88,6 +94,14 @@ jobs:
             rm -f .cache/baseline.tmp
             echo "::notice title=No fresh baseline::Could not fetch $BASE_URL/data/index.json; using the cached copy if there is one."
           fi
+
+      # Preferred baseline: the durable archive on the `data` branch. It survives an unreachable website and
+      # cache eviction, and it is what guarantees that nothing is ever dropped: items that vanish from the
+      # official sources are carried forward (marked removed) from this baseline. The newer of archive and
+      # website copy wins.
+      - name: Load archive baseline (data branch)
+        continue-on-error: true
+        run: node scripts/archive.mjs load
 
       - name: Build index from live sources
         run: npm run build:index
@@ -143,6 +157,12 @@ jobs:
 
       - name: Verify built site
         run: node scripts/check-index.mjs --dist dist
+
+      # Only reached when every check above passed. Commits a snapshot to the `data` branch when the content
+      # changed (removed-upstream items included). A failure here must not block the deploy.
+      - name: Archive the index (data branch)
+        continue-on-error: true
+        run: node scripts/archive.mjs publish
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5

@@ -56,11 +56,14 @@ export interface Item {
   enrichment: EnrichmentMeta | null;
   excerpt: string | null;
   release: { train: string; supported: boolean; osBuilds: string[]; availabilityDate: string | null } | null;
+  /** Archive bookkeeping: items are never deleted, ones that vanished upstream are marked `removed`. */
+  lifecycle?: { state: 'active' | 'removed'; firstSeen: string; lastSeen: string; removedAt?: string } | null;
 }
 
 export interface Release {
   id: string;
   label?: string;
+  lifecycle?: { state: 'active' | 'removed'; firstSeen: string; lastSeen: string; removedAt?: string } | null;
   supported: boolean;
   isLatest?: boolean;
   availabilityDate: string | null;

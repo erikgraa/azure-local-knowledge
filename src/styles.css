@@ -210,6 +210,10 @@ select {
 .badge.affects-fixed-later { background: var(--ok-soft); color: var(--ok); }
 .badge.affects-no { background: var(--surface-2); color: var(--muted); }
 .badge.flag { background: var(--warn-soft); color: var(--warn); }
+.badge.removed { background: transparent; color: var(--muted); border: 1px dashed var(--muted); }
+.card.is-removed { opacity: 0.82; border-style: dashed; }
+.callout.archived { background: var(--surface-2); color: var(--text); border: 1px dashed var(--border); margin-bottom: 14px; }
+.callout.archived svg { color: var(--muted); }
 
 .panel { padding: 22px 24px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 16px; }
 .panel h2 { font-size: 20px; margin-bottom: 8px; }
