@@ -29,8 +29,10 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+# Pushes only re-publish: they apply the cached enrichment but make no new Copilot calls, so usage
+# does not scale with how often you merge. New enrichment runs on the daily schedule or manually.
 env:
-  ENRICH_MAX_ITEMS: ${{ inputs.max_items || '60' }}
+  ENRICH_MAX_ITEMS: ${{ github.event_name == 'push' && '0' || inputs.max_items || '60' }}
 
 jobs:
   build:
@@ -104,21 +106,21 @@ jobs:
         run: |
           if [ "${ENRICH_MAX_ITEMS}" = "0" ]; then
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Copilot enrichment skipped::max_items is 0."
+            echo "::notice title=No new Copilot calls::${{ github.event_name }} run: publishing with cached enrichment only (new enrichment runs on the daily schedule or via Run workflow)."
           elif [ -n "$COPILOT_GITHUB_TOKEN" ] || [ "$USE_GITHUB_TOKEN" = "true" ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Copilot enrichment skipped::Add a COPILOT_GITHUB_TOKEN secret (or set the COPILOT_USE_GITHUB_TOKEN variable) to enable it - see README. Publishing parser-only data."
+            echo "::notice title=Copilot enrichment skipped::Add a COPILOT_GITHUB_TOKEN secret (or set the COPILOT_USE_GITHUB_TOKEN variable) to enable it - see README. Publishing with cached enrichment only."
           fi
 
       - name: Install Copilot CLI
         if: steps.copilot.outputs.enabled == 'true'
         run: npm install -g @github/copilot
 
-      # Never fails the job: on any error the deterministic index.json is deployed as-is.
-      - name: Enrich index with Copilot
-        if: steps.copilot.outputs.enabled == 'true'
+      # Always runs so cached enrichment is applied to every published index; it only calls Copilot when
+      # enabled above. Never fails the job: on any error the deterministic index.json is deployed as-is.
+      - name: Apply and refresh Copilot enrichment
         run: |
           if [ -z "$COPILOT_GITHUB_TOKEN" ]; then unset COPILOT_GITHUB_TOKEN; fi
           npm run enrich -- ${{ inputs.force_enrich && '--force' || '' }}
@@ -127,6 +129,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           COPILOT_USE_GITHUB_TOKEN: ${{ vars.COPILOT_USE_GITHUB_TOKEN }}
           ENRICH_MODEL: ${{ vars.ENRICH_MODEL }}
+          ENRICH_MAX_ITEMS: ${{ steps.copilot.outputs.enabled == 'true' && env.ENRICH_MAX_ITEMS || '0' }}
 
       # Last line of defence: never publish an empty, invalid or implausibly small index.
       - name: Verify index before building
