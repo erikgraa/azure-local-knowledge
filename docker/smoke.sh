@@ -11,7 +11,12 @@ docker run -d --name "$name" -p "$port:8080" "$image" >/dev/null
 trap 'docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
 
 base="http://127.0.0.1:$port"
-curl -fsS --retry 15 --retry-connrefused --retry-delay 1 "$base/healthz" >/dev/null
+ready=0
+for _ in $(seq 1 30); do
+  if curl -fsS "$base/healthz" >/dev/null 2>&1; then ready=1; break; fi
+  sleep 1
+done
+[ "$ready" = 1 ] || { echo "container did not become healthy"; docker logs "$name" || true; exit 1; }
 
 curl -fsS "$base/" | grep -qi '<div id="app"' || { echo "index.html is not the app shell"; exit 1; }
 
