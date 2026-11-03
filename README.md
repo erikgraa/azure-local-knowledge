@@ -44,6 +44,8 @@ Troubleshooting Azure Local means hopping between two places:
 | 🌗 **Dark / light** | Follows your OS, remembers your choice, force it with `?theme=dark`. |
 | 🤖 **Copilot enrichment** | A daily GitHub Copilot pass fills in what parsers can't: version ranges, error aliases, one-line summaries, cross-links and inconsistency flags — cached, schema-validated, and always falling back to parser data. |
 | ⚡ **100 % static** | No backend. Build step → `index.json` → browser search. Hosted on GitHub Pages. |
+| 💻 **PowerShell cmdlet** | One file, no module: `Search-AzLocalKnowledge` searches the published index and returns objects (pipe to `ConvertTo-Json`). See [Use it from the command line](#-use-it-from-the-command-line). |
+| 🐳 **Container image** | The built site with the nightly index baked in, rebuilt after every nightly index and published to GHCR. Runs offline. See [Run it as a container](#-run-it-as-a-container). |
 
 ## 📸 Screenshots
 
@@ -245,6 +247,50 @@ Set `GITHUB_TOKEN` (or log in with `gh auth login`) to raise API limits and get 
 | `VITE_BASE` | `./` | public base path (set by the deploy workflow) |
 | `AZL_MIN_*`, `AZL_MIN_RATIO`, `AZL_MAX_STALE_DAYS`, `AZL_BASELINE_FILE` | see above | `build:index` / `check-index` guardrails |
 
+## 💻 Use it from the command line
+
+`index.json` is a static file, so there is no search API, but one PowerShell function turns it into one. No module, nothing to install; works in Windows PowerShell 5.1 and PowerShell 7+:
+
+```powershell
+iex (irm https://knowledge.azl.graa.dev/Search-AzLocalKnowledge.ps1)   # load it once per session
+
+Search-AzLocalKnowledge 'SecretNotFoundException'
+Search-AzLocalKnowledge 'Arc registration error 42' -Release 2610 | ConvertTo-Json -Depth 4
+Search-AzLocalKnowledge -Type known-issue -Status open -Release 2610 -First 0 | Select-Object Title, Url
+```
+
+It ranks like the website (error codes and error text first, then aliases, title, symptoms), strips GUIDs, timestamps and IPs from pasted errors, and applies the same release logic (`Applies` = `yes` · `maybe` · `fixed-later`). Results are objects with `Score`, `Type`, `Title`, `Area`, `Status`, `Applies`, `Releases`, `FixedIn`, `Symptom`, `Mitigation`, `ErrorStrings`, `Aliases`, `Url`, `Related`, `Flags`, `LastUpdated`, `Archived` and `Id`. The index is cached in your temp folder for 6 hours (`-Refresh` to force). Filters: `-Release`, `-Type`, `-Area`, `-Status`, `-First`, `-ExcludeArchived`, `-IncludeOtherReleases`. Use `-IndexUrl` (or the `AZLOCAL_KNOWLEDGE_INDEX` environment variable) to read from a container or a local file. Summaries may be AI-generated: always confirm in the `Url` source.
+
+## 🐳 Run it as a container
+
+Every Deploy run (daily after the index is rebuilt, on pushes to `main` and manually) also publishes a **self-contained image** to GitHub Container Registry: the verified site with that day's `index.json` baked in, served by unprivileged nginx. No Node, no outbound network access and no secrets are needed at runtime, so it suits air-gapped or internal use.
+
+```bash
+docker run --rm -p 8080:8080 ghcr.io/erikgraa/azure-local-knowledge:latest
+# http://localhost:8080
+```
+
+| Tag | Meaning |
+| --- | --- |
+| `latest` | the most recent build |
+| `YYYY-MM-DD` | the date the index was generated (pin a snapshot) |
+| `sha-<commit>` | the exact source commit |
+
+Multi-arch (`linux/amd64`, `linux/arm64`). The image also serves `/data/index.json`, `/Search-AzLocalKnowledge.ps1` and `/healthz`, so the cmdlet works against it offline:
+
+```powershell
+$env:AZLOCAL_KNOWLEDGE_INDEX = 'http://localhost:8080/data/index.json'
+iex (irm http://localhost:8080/Search-AzLocalKnowledge.ps1)
+Search-AzLocalKnowledge 'SecretNotFoundException'
+```
+
+Notes:
+- **Pull from your own fork:** replace the image name with `ghcr.io/<owner>/<repo>`.
+- **First publish:** GHCR packages start **private**. Make the package public under *Packages → azure-local-knowledge → Package settings → Change visibility* if you want anonymous pulls.
+- **Freshness:** the data is a snapshot from build time. Pull `latest` again (or pin a dated tag) to update.
+- **Safety net:** the image is built from the same checked index as Pages and smoke-tested (`docker/smoke.sh`) before it is pushed. A container failure never blocks the Pages deploy.
+- **Build locally:** `npm run build:index && npx vite build --base=/ --outDir dist-container && docker build -t azl .`
+
 ## 🔗 URL parameters
 
 | Param | Example | Meaning |
@@ -266,9 +312,9 @@ Set `GITHUB_TOKEN` (or log in with `gh auth login`) to raise API limits and get 
 | Workflow | Triggers | What it does |
 | --- | --- | --- |
 | 🧪 [`ci.yml`](.github/workflows/ci.yml) | push · pull request · manual | `npm ci` → unit tests → typecheck → lint *(if configured)* → **index from fixtures** (no dependency on live sources) → Vite build → uploads a preview artifact |
-| 🚀 [`deploy.yml`](.github/workflows/deploy.yml) | push to `main`/`master` · **daily 04:17 UTC** · manual | tests → `configure-pages` → restore caches → fetch the **last published index** and the **`data`-branch archive** (baseline; the newer wins) → **live** `build:index` → apply cached Copilot enrichment *(new calls only on schedule / manual runs)* → `check-index` → `vite build` with the right `base` → `check-index --dist` → **commit the index to the `data` branch** → `upload-pages-artifact` → `deploy-pages` |
+| 🚀 [`deploy.yml`](.github/workflows/deploy.yml) | push to `main`/`master` · **daily 04:17 UTC** · manual | tests → `configure-pages` → restore caches → fetch the **last published index** and the **`data`-branch archive** (baseline; the newer wins) → **live** `build:index` → apply cached Copilot enrichment *(new calls only on schedule / manual runs)* → `check-index` → `vite build` with the right `base` → `check-index --dist` → **commit the index to the `data` branch** → `upload-pages-artifact` → `deploy-pages`. A parallel `container` job then builds, smoke-tests and pushes the **GHCR image** from the same verified site |
 
-- 🔐 Permissions: `pages: write`, `id-token: write`, `contents: read`, plus `copilot-requests: write` for the optional `GITHUB_TOKEN` Copilot auth.
+- 🔐 Permissions: `pages: write`, `id-token: write`, `contents: read`, plus `copilot-requests: write` for the optional `GITHUB_TOKEN` Copilot auth. The `container` job only has `contents: read` and `packages: write`.
 - 🚦 `concurrency: pages` (never cancels an in-flight deployment).
 - 🗺️ **Vite `base`** comes from `actions/configure-pages` (`/<repo>/` for project sites, `/` for user sites or custom domains) via `VITE_BASE`. Locally it falls back to `./`, which works from any path.
 - ❌ If a source is down the build falls back to the last published data for it; if there is nothing to fall back on, or the result fails the sanity checks, the run fails and **the previously deployed site stays online** (see [Guardrails](#️-guardrails-never-ship-an-empty-site)).
@@ -291,7 +337,8 @@ Set `GITHUB_TOKEN` (or log in with `gh auth login`) to raise API limits and get 
 
 ```text
 ├─ 📄 index.html · vite.config.ts · tsconfig.json
-├─ 🎨 public/              favicon.svg, PNG icons, manifest, data/index.json (generated)
+├─ 🎨 public/              favicon.svg, PNG icons, manifest, Search-AzLocalKnowledge.ps1, data/index.json (generated)
+├─ 🐳 Dockerfile · docker/  nginx image of the built site + nginx.conf + smoke.sh
 ├─ 🖥️ src/                 UI (vanilla TypeScript): search, state, render, styles
 ├─ ⚙️ scripts/
 │   ├─ build-index.mjs     live / fixture index builder (CLI)
