@@ -3,7 +3,7 @@
 # only packages it, so there is no Node toolchain and no network access needed at runtime.
 #
 #   docker run --rm -p 8080:8080 ghcr.io/erikgraa/azure-local-knowledge:latest
-FROM nginxinc/nginx-unprivileged:1.30-alpine
+FROM nginxinc/nginx-unprivileged:1.31-alpine
 
 ARG VERSION=dev
 ARG REVISION=unknown
