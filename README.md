@@ -270,6 +270,32 @@ docker run --rm -p 8080:8080 ghcr.io/erikgraa/azure-local-knowledge:latest
 # http://localhost:8080
 ```
 
+**Podman** works the same way (rootless is fine: the image runs as an unprivileged user and listens on 8080; nothing is mounted, so no SELinux flags are needed):
+
+```bash
+podman run --rm -p 8080:8080 ghcr.io/erikgraa/azure-local-knowledge:latest
+```
+
+On Windows and macOS start the VM once with `podman machine init && podman machine start`; the port is forwarded to `localhost` automatically. To keep it running on a Linux host and pick up each nightly image, use a [Quadlet](https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html) unit, `~/.config/containers/systemd/azure-local-compendium.container`:
+
+```ini
+[Unit]
+Description=Azure Local Compendium
+
+[Container]
+Image=ghcr.io/erikgraa/azure-local-knowledge:latest
+PublishPort=8080:8080
+AutoUpdate=registry
+
+[Install]
+WantedBy=default.target
+```
+
+```bash
+systemctl --user daemon-reload && systemctl --user start azure-local-compendium
+systemctl --user enable --now podman-auto-update.timer   # re-pulls :latest daily and restarts on a new image
+```
+
 | Tag | Meaning |
 | --- | --- |
 | `latest` | the most recent build |
@@ -289,7 +315,7 @@ Notes:
 - **First publish:** GHCR packages start **private**. Make the package public under *Packages → azure-local-knowledge → Package settings → Change visibility* if you want anonymous pulls.
 - **Freshness:** the data is a snapshot from build time. Pull `latest` again (or pin a dated tag) to update.
 - **Safety net:** the image is built from the same checked index as Pages and smoke-tested (`docker/smoke.sh`) before it is pushed. A container failure never blocks the Pages deploy.
-- **Build locally:** `npm run build:index && npx vite build --base=/ --outDir dist-container && docker build -t azl .`
+- **Build locally:** `npm run build:index && npx vite build --base=/ --outDir dist-container && docker build -t azl .` (use `podman build` the same way; `CONTAINER_ENGINE=podman bash docker/smoke.sh azl` runs the smoke test with Podman).
 
 ## 🔗 URL parameters
 
