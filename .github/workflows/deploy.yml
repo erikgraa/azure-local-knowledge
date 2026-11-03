@@ -158,6 +158,25 @@ jobs:
       - name: Verify built site
         run: node scripts/check-index.mjs --dist dist
 
+      # The container serves the site from "/", whatever base Pages uses, so it gets its own build of the
+      # same sources. These steps never block the Pages deploy; if one fails the container job fails instead.
+      - name: Build site for the container image
+        continue-on-error: true
+        run: npx vite build --base=/ --outDir dist-container
+
+      - name: Verify container site
+        continue-on-error: true
+        run: node scripts/check-index.mjs --dist dist-container
+
+      - name: Upload container site
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: site-container
+          path: dist-container
+          retention-days: 1
+          if-no-files-found: error
+
       # Only reached when every check above passed. Commits a snapshot to the `data` branch when the content
       # changed (removed-upstream items included). A failure here must not block the deploy.
       - name: Archive the index (data branch)
@@ -181,3 +200,76 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+
+  # Packages the exact site that was just indexed (and verified) into a self-contained image on GHCR.
+  # Runs after every build, so the image is refreshed by the nightly index. A failure here never blocks Pages.
+  container:
+    name: Publish container image
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download built site
+        uses: actions/download-artifact@v8
+        with:
+          name: site-container
+          path: dist-container
+
+      - name: Read index date
+        id: index
+        run: |
+          echo "date=$(node -p "new Date(JSON.parse(require('fs').readFileSync('dist-container/data/index.json','utf8')).generatedAt).toISOString().slice(0,10)")" >> "$GITHUB_OUTPUT"
+          echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ steps.index.outputs.date }}
+            type=sha,prefix=sha-
+
+      # Build and smoke-test the native architecture before publishing anything.
+      - name: Build (amd64) and smoke test
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: azl-smoke:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - run: bash docker/smoke.sh azl-smoke:test
+
+      - name: Build and push (amd64 + arm64)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.index.outputs.date }}
+            REVISION=${{ github.sha }}
+            CREATED=${{ steps.index.outputs.created }}
+          cache-from: type=gha

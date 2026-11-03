@@ -45,6 +45,13 @@ jobs:
       - name: Build site
         run: npm run build
 
+      # Proves the Dockerfile builds and the container serves the app, the index and the PowerShell cmdlet.
+      - name: Container image builds and serves the site
+        run: |
+          npx vite build --base=/ --outDir dist-container
+          docker build -t azl-smoke:ci .
+          bash docker/smoke.sh azl-smoke:ci
+
       - name: Upload site preview artifact
         uses: actions/upload-artifact@v7
         with:
