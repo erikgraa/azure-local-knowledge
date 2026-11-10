@@ -5,6 +5,20 @@ name: Build & deploy to GitHub Pages
 on:
   push:
     branches: [main, master]
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'schema/**'
+      - 'scripts/**'
+      - 'docker/**'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'vite.config.ts'
+      - '.github/workflows/deploy.yml'
   schedule:
     - cron: '17 4 * * *' # daily, 04:17 UTC
   workflow_dispatch:
@@ -216,11 +230,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install verification dependencies
+        run: npm ci
+
       - name: Download built site
         uses: actions/download-artifact@v8
         with:
           name: site-container
           path: dist-container
+
+      - name: Verify downloaded container site
+        run: node scripts/check-index.mjs dist-container/data/index.json --dist dist-container
 
       - name: Read index date
         id: index
@@ -273,3 +298,8 @@ jobs:
             REVISION=${{ github.sha }}
             CREATED=${{ steps.index.outputs.created }}
           cache-from: type=gha
+
+      - name: Retain 30 days of dated and SHA container versions
+        run: node scripts/container-retention.mjs --apply
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
