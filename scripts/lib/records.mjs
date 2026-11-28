@@ -96,7 +96,7 @@ export function resolveTsgReleases(versions, knownTrainsAsc) {
   return dedupe(trains).sort(compareTrains);
 }
 
-export function tsgToRecord(parsed, { sourceText, lastUpdated = null, knownTrainsAsc }) {
+export function tsgToRecord(parsed, { sourceText, lastUpdated = null, firstSeenOnGitHub = null, knownTrainsAsc }) {
   return blankRecord({
     id: tsgIdFromPath(parsed.path),
     type: 'tsg',
@@ -118,6 +118,7 @@ export function tsgToRecord(parsed, { sourceText, lastUpdated = null, knownTrain
     url: tsgUrl(parsed.path),
     urls: [],
     lastUpdated,
+    firstSeenOnGitHub,
     sourceHash: sha256(sourceText),
     source: 'AzureLocal-Supportability',
     excerpt: parsed.excerpt,

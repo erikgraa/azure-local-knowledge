@@ -1,6 +1,6 @@
 import './styles.css';
 import { ICONS, STATUS_LABEL, TYPE_SHORT, esc, fmtDate, plural } from './format';
-import { type CardContext, renderCard, renderDrawer } from './render';
+import { type CardContext, enrichmentSummary, renderCard, renderDrawer } from './render';
 import { Searcher, highlightTerms } from './search';
 import { defaultState, parseState, serializeState } from './state';
 import type { Affects, IndexData, Item, ItemType, Release, State } from './types';
@@ -330,6 +330,7 @@ function update() {
 
 function renderFooter() {
   const counts = data.stats ?? {};
+  const enrichment = enrichmentSummary(data);
   const archived = data.items.filter((i) => i.lifecycle?.state === 'removed').length;
   const live = (type: string) => data.items.filter((i) => i.type === type && i.lifecycle?.state !== 'removed').length;
   const repo = 'https://github.com/erikgraa/azure-local-knowledge';
@@ -342,7 +343,7 @@ function renderFooter() {
       <p class="trademark">This project is not affiliated with, endorsed by, or sponsored by Microsoft. Azure and Azure Local are trademarks of Microsoft Corporation.</p>
       <p class="disclaimer-links">${link(repo, 'Source code &amp; contributions')} · ${link(`${repo}/issues`, 'Report a problem')} · ${link(`${repo}/blob/main/NOTICE.md`, 'Notice &amp; licences')}</p>
     </div>
-    <p class="footer-stats">${plural(live('tsg'), 'guide')} · ${plural(live('known-issue'), 'known issue')} · ${plural(data.releases.length, 'release train')}${archived ? ` · ${plural(archived, 'archived item')} no longer on the official sites` : ''} · index built ${esc(fmtDate(data.generatedAt))}${data.enrichment ? ` · ${plural(data.enrichment.enrichedItems, 'item')} refined by Copilot` : ''}</p>`;
+    <p class="footer-stats">${plural(live('tsg'), 'guide')} · ${plural(live('known-issue'), 'known issue')} · ${plural(data.releases.length, 'release train')}${archived ? ` · ${plural(archived, 'archived item')} no longer on the official sites` : ''} · index built ${esc(fmtDate(data.generatedAt))}${enrichment ? ` · ${esc(enrichment)}` : ''}</p>`;
 }
 
 const SOURCE_LABEL: Record<string, string> = { tsg: 'the Supportability guides', learn: 'the Learn known issues and release information' };

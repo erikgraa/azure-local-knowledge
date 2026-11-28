@@ -49,6 +49,8 @@ export interface Item {
   url: string;
   urls: Link[];
   lastUpdated: string | null;
+  /** Earliest commit in the TSG's GitHub path history; absent in older indexes. */
+  firstSeenOnGitHub?: string | null;
   sourceHash: string | null;
   source: string | null;
   related: Related[];

@@ -30,6 +30,8 @@ flowchart LR
 3. **Enrich (optional)** – Copilot reviews new/changed items only and refines the fields parsers can't reliably get.
 4. **Search** – the browser downloads one `index.json` and builds a MiniSearch index in a few milliseconds.
 
+The footer says **All guides and known issues refined by Copilot** when every guide and known issue (including archived items) has enrichment metadata. Otherwise it keeps the enriched-item count. Release records are excluded because they are not enrichment candidates.
+
 <a id="index"></a>
 
 ## 🧩 The index
@@ -61,6 +63,7 @@ flowchart LR
 | `mitigation`, `mitigationSummary` | Parsed text · short summary |
 | `url`, `urls[]` | Deep link to the TSG on GitHub / the Learn section |
 | `lastUpdated`, `sourceHash` | Last commit date (TSGs) or `ms.date` · SHA-256 of the source (cache key) |
+| `firstSeenOnGitHub` | Earliest commit date in the TSG's GitHub path history; distinct from the lifecycle app's `lifecycle.firstSeen` |
 | `related[]`, `flags[]` | Cross-links (parser + Copilot) · inconsistencies |
 | `enrichment` | Provenance of Copilot-derived fields (`null` if none) |
 
@@ -76,6 +79,7 @@ flowchart LR
 - **Error text** – fenced blocks that aren't commands, prose under *Error*/*Exception*/*Message* headings, and inline code in the symptoms. Exception names, hex/exit codes and `tsg-metadata` validator names become `errorCodes`.
 - **Area** – the `TSG/<Area>/` folder, mapped to a canonical area shared with Learn's *Feature* column.
 - **Excluded** – READMEs, images, contribution templates.
+- **GitHub dates** – TSG details show **TSG first seen on GitHub** alongside the existing **Last updated** and **First seen here** dates. Authenticated builds use the commits API's final page to find the oldest commit for the current file path (committer date, falling back to author date). This is Git history, not a GitHub upload timestamp; history before a rename or move is not followed. Both commit dates are cached in `.cache/last-modified.json` by path and blob SHA, with older latest-only entries backfilled automatically. Failed lookups warn and retain cached dates; a previously published first commit date is also retained through refreshes and archival. Without authentication only cached dates are used. Unknown dates remain `null` and are omitted from details, never replaced by app discovery dates. Archived guides retain known dates but are not backfilled until they reappear upstream.
 
 ### 📋 Learn markdown (`scripts/lib/learn.mjs`)
 

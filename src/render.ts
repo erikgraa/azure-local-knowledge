@@ -1,4 +1,4 @@
-import { ICONS, STATUS_LABEL, TYPE_LABEL, TYPE_SHORT, bestError, esc, fmtDate, highlight, snippet } from './format';
+import { ICONS, STATUS_LABEL, TYPE_LABEL, TYPE_SHORT, bestError, esc, fmtDate, highlight, plural, snippet } from './format';
 import { summarizeReleases } from './versions';
 import type { Affects, IndexData, Item, Release } from './types';
 
@@ -15,6 +15,14 @@ const AFFECTS_LABEL: Record<Affects, string> = {
   'fixed-later': 'Fixed in a later release',
   no: '',
 };
+
+export function enrichmentSummary(data: IndexData): string {
+  if (!data.enrichment) return '';
+  const items = data.items.filter((item) => item.type !== 'release');
+  return items.length > 0 && items.every((item) => item.enrichment)
+    ? 'All guides and known issues refined by Copilot'
+    : `${plural(data.enrichment.enrichedItems, 'item')} refined by Copilot`;
+}
 
 function badges(item: Item, ctx: CardContext): string {
   const out: string[] = [`<span class="badge type type-${item.type}">${esc(TYPE_SHORT[item.type])}</span>`];
@@ -94,6 +102,7 @@ export function renderDrawer(item: Item, data: IndexData, byId: Map<string, Item
     ['Solution versions', item.solutionVersions.join(', ')],
     ['First listed', item.introducedIn ?? ''],
     ['Last updated', fmtDate(item.lastUpdated)],
+    ['TSG first seen on GitHub', item.type === 'tsg' ? fmtDate(item.firstSeenOnGitHub) : ''],
     ['First seen here', fmtDate(item.lifecycle?.firstSeen)],
     ['Removed upstream', fmtDate(item.lifecycle?.removedAt)],
     ['Source', item.source ?? ''],

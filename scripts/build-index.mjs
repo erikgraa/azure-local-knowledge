@@ -7,7 +7,7 @@
  *   npm run build:index -- --fixtures     # offline: checked-in samples under test/fixtures (CI)
  *
  * Optional: GITHUB_TOKEN / GH_TOKEN (or a logged-in `gh`) raises API rate limits and
- * enables per-file "last updated" dates.
+ * enables per-file first and latest GitHub commit dates.
  *
  * Guardrails (live builds): if a source is unreachable or comes back suspiciously small compared to the
  * last published index (.cache/last-good-index.json, see AZL_BASELINE_FILE), that source's records are
@@ -70,7 +70,7 @@ async function main() {
     log('using offline fixtures (test/fixtures) - NOT live data');
     source = fixtureSource();
   } else {
-    log((await getGitHubToken()) ? 'using a GitHub token' : 'no GitHub token: anonymous API limits, no last-updated dates');
+    log((await getGitHubToken()) ? 'using a GitHub token' : 'no GitHub token: anonymous API limits, cached commit dates only');
     source = liveSource({ warn, cache: lastMod });
     baseline = await loadBaseline();
     thresholds = thresholdsFromEnv();

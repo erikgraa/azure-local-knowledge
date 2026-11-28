@@ -29,6 +29,9 @@ export function stampAndKeep({ fresh, baselineItems = [], types, now, baselineAt
     seen.add(rec.id);
     const p = prev.get(rec.id);
     if (p?.lifecycle?.state === 'removed') restored++;
+    if (rec.type === 'tsg' && p && rec.url === p.url) {
+      rec.firstSeenOnGitHub ??= p.firstSeenOnGitHub ?? null;
+    }
     rec.lifecycle = {
       state: 'active',
       firstSeen: p?.lifecycle?.firstSeen ?? (p ? (baselineAt ?? now) : now),

@@ -71,6 +71,17 @@ test('removal date sticks across later runs, and the item comes back when it rea
   assert.equal(day3.stats.archived, 0);
 });
 
+test('first GitHub commit date survives removal and restoration without history metadata', async () => {
+  const baseline = structuredClone(day0);
+  const first = '2023-04-05T06:07:08Z';
+  baseline.items.find((i) => i.id === SPN).firstSeenOnGitHub = first;
+  const removed = (await buildIndex({ source: withoutSpn(), baseline, now: T1 })).index;
+  assert.equal(removed.items.find((i) => i.id === SPN).firstSeenOnGitHub, first);
+  const restored = (await buildIndex({ source: fixtureSource(), baseline: removed, now: T2 })).index;
+  assert.equal(restored.items.find((i) => i.id === SPN).firstSeenOnGitHub, first);
+  assert.equal(restored.items.find((i) => i.id === SPN).lifecycle.firstSeen, T0);
+});
+
 test('known issues and release trains that vanish from Learn are kept too', async () => {
   const real = fixtureSource();
   const noOld = { ...real, learnFiles: async () => (await real.learnFiles()).filter((f) => !/known-issues-24/.test(f)) };
