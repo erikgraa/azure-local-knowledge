@@ -57,4 +57,26 @@ test('unknown fields stay null / empty rather than invented', () => {
   assert.equal(ki.symptomSummary, null);
   assert.equal(ki.enrichment, null);
   assert.equal(ki.lastUpdated, null);
+  assert.equal(ki.firstSeenOnGitHub, null);
+});
+
+test('pipeline keeps first GitHub commit, latest commit, and app discovery dates distinct', async () => {
+  const first = '2023-04-05T06:07:08Z';
+  const latest = '2026-11-20T12:00:00Z';
+  const now = '2026-11-28T00:00:00Z';
+  const source = {
+    ...fixtureSource(),
+    commitDates: async (files) => new Map(files.map((f) => [f.path, { date: latest, firstCommitDate: first }])),
+  };
+  const { index: dated } = await buildIndex({ source, now });
+  const tsgs = dated.items.filter((i) => i.type === 'tsg');
+  assert.ok(tsgs.length);
+  for (const item of tsgs) {
+    assert.equal(item.firstSeenOnGitHub, first);
+    assert.equal(item.lastUpdated, latest);
+    assert.equal(item.lifecycle.firstSeen, now);
+  }
+  const { index: refreshed } = await buildIndex({ source: fixtureSource(), baseline: dated });
+  assert.ok(refreshed.items.filter((i) => i.type === 'tsg').every((i) => i.firstSeenOnGitHub === first));
+  assert.ok(refreshed.items.filter((i) => i.type !== 'tsg').every((i) => i.firstSeenOnGitHub == null));
 });

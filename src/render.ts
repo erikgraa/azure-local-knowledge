@@ -94,6 +94,7 @@ export function renderDrawer(item: Item, data: IndexData, byId: Map<string, Item
     ['Solution versions', item.solutionVersions.join(', ')],
     ['First listed', item.introducedIn ?? ''],
     ['Last updated', fmtDate(item.lastUpdated)],
+    ['TSG first seen on GitHub', item.type === 'tsg' ? fmtDate(item.firstSeenOnGitHub) : ''],
     ['First seen here', fmtDate(item.lifecycle?.firstSeen)],
     ['Removed upstream', fmtDate(item.lifecycle?.removedAt)],
     ['Source', item.source ?? ''],

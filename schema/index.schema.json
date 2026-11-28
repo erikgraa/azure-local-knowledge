@@ -138,6 +138,7 @@
         "url": { "type": "string" },
         "urls": { "type": "array", "items": { "$ref": "#/definitions/link" } },
         "lastUpdated": { "type": ["string", "null"] },
+        "firstSeenOnGitHub": { "type": ["string", "null"] },
         "sourceHash": { "type": ["string", "null"] },
         "source": { "type": ["string", "null"] },
         "related": { "type": "array", "items": { "$ref": "#/definitions/related" } },

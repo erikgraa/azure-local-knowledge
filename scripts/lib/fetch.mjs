@@ -20,12 +20,15 @@ export async function getGitHubToken() {
   return cachedToken;
 }
 
-async function request(url, { headers = {}, retries = 4, json = false } = {}) {
+async function request(url, { headers = {}, retries = 4, json = false, withHeaders = false } = {}) {
   let lastErr;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const res = await fetch(url, { headers: { 'user-agent': 'azure-local-knowledge-build', ...headers }, signal: AbortSignal.timeout(30_000) });
-      if (res.ok) return json ? await res.json() : await res.text();
+      if (res.ok) {
+        const data = json ? await res.json() : await res.text();
+        return withHeaders ? { data, headers: res.headers } : data;
+      }
       if ([429, 502, 503, 504].includes(res.status) || (res.status === 403 && res.headers.get('x-ratelimit-remaining') === '0')) {
         lastErr = new Error(`${res.status} ${url}`);
         await sleep(1000 * 2 ** attempt);
@@ -68,12 +71,21 @@ export async function githubContents(repo, path, ref) {
   });
 }
 
-export async function githubLastCommitDate(repo, path, ref) {
-  const list = await request(
-    `https://api.github.com/repos/${repo}/commits?sha=${ref}&path=${encodeURIComponent(path)}&per_page=1`,
-    { headers: await apiHeaders(), json: true },
-  );
-  return list?.[0]?.commit?.committer?.date ?? list?.[0]?.commit?.author?.date ?? null;
+export async function githubCommitDates(repo, path, ref, { warn = console.warn } = {}) {
+  const url = `https://api.github.com/repos/${repo}/commits?sha=${encodeURIComponent(ref)}&path=${encodeURIComponent(path)}&per_page=1`;
+  const options = { headers: await apiHeaders(), json: true };
+  const { data: latest, headers } = await request(url, { ...options, withHeaders: true });
+  const commitDate = (list) => list?.[0]?.commit?.committer?.date ?? list?.[0]?.commit?.author?.date ?? null;
+  let firstCommitDate = null;
+  try {
+    const links = headers.get('link') ?? '';
+    const last = /<([^>]+)>;\s*rel="last"/.exec(links)?.[1];
+    if (!last && /rel="next"/.test(links)) throw new Error('Incomplete commit pagination');
+    firstCommitDate = commitDate(last ? await request(last, options) : latest);
+  } catch (err) {
+    warn(`could not fetch first commit date for ${path}: ${err.message}`);
+  }
+  return { date: commitDate(latest), firstCommitDate };
 }
 
 export const rawFile = (repo, ref, path) =>

@@ -53,8 +53,8 @@ async function loadTsgs(source, { log, warn }) {
   failed.forEach((r) => warn(`failed to fetch a TSG: ${r.error.message}`));
   if (failed.length > tsgFiles.length / 2) throw new Error(`Too many TSG downloads failed (${failed.length}/${tsgFiles.length}).`);
 
-  const lastModified = await source.lastModified(tsgFiles);
-  return { tree, tsgContent, readmeTitles, lastModified };
+  const commitDates = await source.commitDates(tsgFiles);
+  return { tree, tsgContent, readmeTitles, commitDates };
 }
 
 const attempt = async (fn) => {
@@ -96,14 +96,20 @@ export async function buildIndex({ source, baseline = null, thresholds = null, n
   const sourceText = {};
   const tsgRecords = [];
   if (tsgRes.value) {
-    const { tsgContent, readmeTitles, lastModified } = tsgRes.value;
+    const { tsgContent, readmeTitles, commitDates } = tsgRes.value;
     for (const r of tsgContent) {
       if (!r.ok) continue;
       const { file, content } = r.value;
       try {
         const parsed = parseTsg({ path: file.path, content, readmeTitle: readmeTitles[file.path] ?? null });
         if (/^\{.*\}$/.test(parsed.title) || /^contributing to /i.test(parsed.title)) continue;
-        const record = tsgToRecord(parsed, { sourceText: content, lastUpdated: lastModified.get(file.path) ?? null, knownTrainsAsc });
+        const dates = commitDates.get(file.path);
+        const record = tsgToRecord(parsed, {
+          sourceText: content,
+          lastUpdated: dates?.date ?? null,
+          firstSeenOnGitHub: dates?.firstCommitDate ?? null,
+          knownTrainsAsc,
+        });
         sourceText[record.id] = content.slice(0, 24000);
         tsgRecords.push(record);
       } catch (err) {

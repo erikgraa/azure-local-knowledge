@@ -4,7 +4,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DOCS_DIR, DOCS_REPO } from './learn.mjs';
 import { TSG_BRANCH, TSG_REPO } from './tsg.mjs';
-import { getGitHubToken, githubContents, githubLastCommitDate, githubTree, pool, rawFile } from './fetch.mjs';
+import { getGitHubToken, githubContents, githubCommitDates, githubTree, pool, rawFile } from './fetch.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const FIXTURE_DIR = resolve(here, '../../test/fixtures');
@@ -17,7 +17,7 @@ export const FIXTURE_DIR = resolve(here, '../../test/fixtures');
  *   tsgFile(path)        -> markdown
  *   learnFiles()         -> ['known-issues.md', 'previous-releases/known-issues-24.md', ...]
  *   learnFile(name)      -> markdown (name relative to azure-local/)
- *   lastModified(files)  -> Map(path -> ISO date), best effort
+ *   commitDates(files)   -> Map(path -> { date, firstCommitDate }), best effort
  */
 export function liveSource({ warn = console.warn, cache = {} } = {}) {
   return {
@@ -49,13 +49,23 @@ export function liveSource({ warn = console.warn, cache = {} } = {}) {
       return [...found];
     },
     learnFile: (name) => rawFile(DOCS_REPO, 'main', `${DOCS_DIR}/${name}`),
-    async lastModified(files) {
+    async commitDates(files) {
       const out = new Map();
-      if (!(await getGitHubToken())) return out;
-      const stale = files.filter((f) => cache[f.path]?.sha !== f.sha);
-      const results = await pool(stale, 6, async (f) => ({ f, date: await githubLastCommitDate(TSG_REPO, f.path, TSG_BRANCH) }));
-      for (const r of results) if (r.ok) cache[r.value.f.path] = { sha: r.value.f.sha, date: r.value.date };
-      for (const f of files) if (cache[f.path]?.date) out.set(f.path, cache[f.path].date);
+      if (await getGitHubToken()) {
+        const stale = files.filter((f) => cache[f.path]?.sha !== f.sha || !cache[f.path]?.firstCommitDate);
+        const results = await pool(stale, 6, async (f) => ({ f, dates: await githubCommitDates(TSG_REPO, f.path, TSG_BRANCH, { warn }) }));
+        for (const [i, r] of results.entries()) {
+          if (r.ok) {
+            const { f, dates } = r.value;
+            cache[f.path] = {
+              sha: f.sha,
+              date: dates.date ?? cache[f.path]?.date ?? null,
+              firstCommitDate: dates.firstCommitDate ?? cache[f.path]?.firstCommitDate ?? null,
+            };
+          } else warn(`could not fetch commit dates for ${stale[i].path}: ${r.error.message}`);
+        }
+      }
+      for (const f of files) if (cache[f.path]) out.set(f.path, cache[f.path]);
       return out;
     },
   };
@@ -91,7 +101,7 @@ export function fixtureSource(dir = FIXTURE_DIR) {
       return (await walk(learnRoot)).map((f) => posix(relative(learnRoot, f))).filter((f) => /(^|\/)known-issues.*\.md$/i.test(f));
     },
     learnFile: (name) => readFile(join(learnRoot, name), 'utf8'),
-    async lastModified() {
+    async commitDates() {
       return new Map();
     },
   };
