@@ -30,6 +30,8 @@ flowchart LR
 3. **Enrich (optional)** – Copilot reviews new/changed items only and refines the fields parsers can't reliably get.
 4. **Search** – the browser downloads one `index.json` and builds a MiniSearch index in a few milliseconds.
 
+The footer says **All guides and known issues refined by Copilot** when every guide and known issue (including archived items) has enrichment metadata. Otherwise it keeps the enriched-item count. Release records are excluded because they are not enrichment candidates.
+
 <a id="index"></a>
 
 ## 🧩 The index

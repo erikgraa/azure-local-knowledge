@@ -12,7 +12,7 @@ const hooks = registerHooks({
     return nextResolve(specifier, context);
   },
 });
-const { renderDrawer } = await import('../src/render.ts');
+const { enrichmentSummary, renderDrawer } = await import('../src/render.ts');
 hooks.deregister();
 
 const item = blankRecord({
@@ -38,4 +38,30 @@ test('unknown first commit dates and non-TSGs do not show the new fact', () => {
     assert.match(html, /Last updated/);
   }
   assert.doesNotMatch(render({ ...item, type: 'known-issue' }), /TSG first seen on GitHub/);
+});
+
+test('footer describes complete enrichment without counting release records', () => {
+  const enriched = { ...item, enrichment: { provider: 'copilot-cli' } };
+  const data = {
+    enrichment: { enrichedItems: 2, pendingItems: 0 },
+    items: [enriched, { ...enriched, type: 'known-issue' }, { ...item, type: 'release' }],
+  };
+  assert.equal(enrichmentSummary(data), 'All guides and known issues refined by Copilot');
+});
+
+test('footer retains the count when a new or archived guide is unenriched, even with no pending work', () => {
+  const data = {
+    enrichment: { enrichedItems: 1, pendingItems: 0 },
+    items: [{ ...item, enrichment: { provider: 'copilot-cli' } }, item],
+  };
+  assert.equal(enrichmentSummary(data), '1 item refined by Copilot');
+  data.items[1] = { ...item, lifecycle: { state: 'removed' } };
+  assert.equal(enrichmentSummary(data), '1 item refined by Copilot');
+});
+
+test('footer does not claim complete enrichment for empty, release-only, or unenriched indexes', () => {
+  assert.equal(enrichmentSummary({ items: [item], enrichment: null }), '');
+  for (const items of [[], [item], [{ ...item, type: 'release' }]]) {
+    assert.equal(enrichmentSummary({ items, enrichment: { enrichedItems: 0, pendingItems: 0 } }), '0 items refined by Copilot');
+  }
 });
